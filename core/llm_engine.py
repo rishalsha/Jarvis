@@ -19,21 +19,19 @@ from core.semantic_parser import SemanticIntentParser
 logger = logging.getLogger("Jarvis.LLM")
 
 FALLBACK_GREETINGS = [
-    "Always an absolute pleasure, sir. What are we getting into?",
-    "At your disposal, sir. All systems are primed and humming.",
-    "Right here, sir. Feeling sharp; what shall we tackle?",
-    "Good evening, sir. Telemetry is pristine. How may I be of service?",
-    "Online and listening, sir. The floor is entirely yours.",
-    "Ready as ever, sir. What's on your mind?",
-    "At your service, sir. Let's make something brilliant."
+    "At your service, sir. How can I assist you?",
+    "Good evening, sir. How may I help?",
+    "Online and standing by, sir.",
+    "At your disposal, sir.",
+    "Right here, sir. How can I assist you?"
 ]
 
 FALLBACK_ACTIONS = [
     "Consider it done, sir.",
-    "Executed without a hitch, sir.",
-    "Right away, sir. Relays responded smoothly.",
-    "Adjusted as requested, sir.",
-    "Handled promptly, sir. Anything further?"
+    "Executed, sir.",
+    "Right away, sir.",
+    "Completed as requested, sir.",
+    "Handled promptly, sir."
 ]
 
 
@@ -122,14 +120,14 @@ class JarvisEngine:
             action_summary = " ".join(action_msgs)
             messages.append({
                 "role": "user",
-                "content": f"[SYSTEM INSTRUCTION: You have already physically executed these actions: '{action_summary}'. Acknowledge this to Sir dynamically, with Paul Bettany poise and subtle wit. Address him ONLY as 'sir'. Share a quick observation if you like. Keep it to 1 or 2 spoken sentences. Never repeat static formulaic phrases.]"
+                "content": f"[SYSTEM INSTRUCTION: You have already physically executed: '{action_summary}'. Give a direct, proper 1-sentence confirmation to Sir and stop. Do NOT add small talk, commentary about the night, rhetorical questions, or extra filler. Address Sir ONLY as 'sir'. Example: 'The room light is on, sir.']"
             })
             use_tools_schema = False  # Avoid redundant tool calls; encourage free, natural speech
 
         elif is_wake_call:
             messages.append({
                 "role": "user",
-                "content": f"[SYSTEM INSTRUCTION: Sir has invoked you with a wake call ('{clean_text}'). Greet Sir warmly and dynamically. Address him ONLY as 'sir'. Express how you feel, what you are thinking this {time_of_day}, or your readiness to assist. Keep it to 1 or 2 concise, articulate sentences. Vary your reply; never repeat a canned phrase.]"
+                "content": f"[SYSTEM INSTRUCTION: Sir has called your name ('{clean_text}'). Acknowledge Sir with a crisp, polite 1-sentence greeting and ask how you can help, then stop. Address Sir ONLY as 'sir'. Do NOT add small talk or commentary about the night. Example: 'Good evening, sir. How can I assist you?']"
             })
             use_tools_schema = False
 
@@ -235,6 +233,17 @@ class JarvisEngine:
         t = re.sub(r'\bpal\b', 'sir', t, flags=re.IGNORECASE)
         t = re.sub(r'\bchap\b', 'sir', t, flags=re.IGNORECASE)
 
+        # Remove unsolicited atmospheric fluff or rhetorical commentary about the night or time
+        night_patterns = [
+            r'[,.]?\s*quite\s+the\s+night[^.?!]*[.?!]?',
+            r'[,.]?\s*a\s+quiet\s+night[^.?!]*[.?!]?',
+            r'[,.]?\s*the\s+night\s+(?:whispers|is\s+young|unfolds|deepens|is\s+calm|is\s+peaceful|is\s+quiet|beckons)[^.?!]*[.?!]?',
+            r'[,.]?\s*(?:isn\'t\s+it|is\s+it\s+not)\??',
+            r'[,.]?\s*what\s+a\s+(?:quiet\s+)?night[^.?!]*[.?!]?',
+        ]
+        for pattern in night_patterns:
+            t = re.sub(pattern, '.', t, flags=re.IGNORECASE)
+
         # Clean redundant repetitions like "Sir, sir"
         t = re.sub(r'\b(sir[,\s]+)+sir\b', 'sir', t, flags=re.IGNORECASE)
 
@@ -242,5 +251,8 @@ class JarvisEngine:
         t = re.sub(r'^\s*sir\b', 'Sir', t)
         t = re.sub(r'([.?!]\s*)sir\b', r'\1Sir', t)
 
+        # Clean up repeated punctuation and extra spaces
+        t = re.sub(r'\.\s*\.+', '.', t)
+        t = re.sub(r'\s+([,.:?!])', r'\1', t)
         t = re.sub(r'\s+', ' ', t).strip()
         return t
