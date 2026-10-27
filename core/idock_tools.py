@@ -8,6 +8,7 @@ import socket
 import logging
 import time
 import uuid
+import threading
 import paho.mqtt.client as mqtt
 
 logger = logging.getLogger("Jarvis.iDock")
@@ -148,16 +149,27 @@ class IDockController:
         mac = comp["mac"]
 
         if action in ["wake", "turn_on", "power_on", "boot", "start"]:
-            # 1. Local UDP broadcast
-            self._send_udp_wol(mac)
-            # 2. MQTT agent wake topic
-            self.client.publish(f"cmnd/{comp_topic}/wake", mac)
-            # 3. ESP32 WoL Relay
-            self.client.publish("cmnd/esp32_wol/wake", mac)
-            # 4. Tasmota WoL
-            self.client.publish("cmnd/room_light/WakeOnLan", mac)
+            def send_burst():
+                # 1. Local UDP broadcast
+                self._send_udp_wol(mac)
+                # 2. MQTT agent wake topic
+                self.client.publish(f"cmnd/{comp_topic}/wake", mac)
+                # 3. ESP32 WoL Relay
+                self.client.publish("cmnd/esp32_wol/wake", mac)
+                # 4. Tasmota WoL (both lowercase and uppercase MAC)
+                self.client.publish("cmnd/room_light/WakeOnLan", mac)
+                self.client.publish("cmnd/room_light/WakeOnLan", mac.upper())
 
-            logger.info(f"Published WoL requests for {comp['name']} ({mac})")
+            # First burst
+            send_burst()
+
+            # Second burst in background after 400ms to guarantee packet delivery
+            def delayed_burst():
+                time.sleep(0.4)
+                send_burst()
+            threading.Thread(target=delayed_burst, daemon=True).start()
+
+            logger.info(f"Published multi-burst WoL requests for {comp['name']} ({mac})")
             return {
                 "success": True,
                 "computer": comp["name"],

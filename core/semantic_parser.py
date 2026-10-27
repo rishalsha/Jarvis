@@ -78,9 +78,13 @@ class SemanticIntentParser:
         # 4. WORKSTATION / PC CONTROLS
         # -------------------------------------------------------------
         has_pc_word = bool(re.search(r"\b(pc|desktop|rig|computer|workstation|machine)\b", raw))
-        has_laptop_word = bool(re.search(r"\b(laptop|notebook)\b", raw))
+        has_laptop_word = bool(re.search(r"\b(laptop|notebook|macbook)\b", raw))
 
-        wake_words = ["wake", "wake up", "boot", "boot up", "turn on", "start up", "fire up", "power on", "bring online", "rev up"]
+        wake_words = [
+            "wake", "wake up", "boot", "boot up", "turn on", "start up", "start",
+            "fire up", "power on", "bring online", "rev up", "make", "wait", "wave",
+            "open", "activate", "switch on", "up"
+        ]
         sleep_words = ["sleep", "suspend", "nap", "rest", "standby", "put to sleep"]
         shutdown_words = ["shutdown", "shut down", "power off", "kill power", "turn off"]
 
@@ -95,9 +99,10 @@ class SemanticIntentParser:
 
         # Work Laptop
         if has_laptop_word:
-            if any(w in raw for w in wake_words):
-                intents.append({"type": "computer", "computer": "work_laptop", "action": "wake"})
-            elif any(s in raw for s in sleep_words + shutdown_words):
+            if any(s in raw for s in sleep_words + shutdown_words):
                 intents.append({"type": "computer", "computer": "work_laptop", "action": "sleep"})
+            else:
+                # Default for any laptop request ("wake laptop", "make my laptop", "start laptop") is wake
+                intents.append({"type": "computer", "computer": "work_laptop", "action": "wake"})
 
         return intents
