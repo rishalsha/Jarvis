@@ -150,15 +150,81 @@ class JarvisVoiceManager {
     }
   }
 
-  speakAsJarvis(text) {
-    if (!('speechSynthesis' in window) || !text) return;
+  async speakAsJarvis(text) {
+    if (!text) return;
 
-    window.speechSynthesis.cancel();
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    if (this.currentAudio) {
+      try { this.currentAudio.pause(); } catch(e) {}
+      this.currentAudio = null;
+    }
+
     this.isSpeaking = true;
     this.setUIState('speaking');
-
-    // Setup live speaking captions display with word spans
     this.initSpeakingCaption(text);
+
+    try {
+      // 1. Ultra-fast local neural Piper synthesis (~75ms, sub-100ms response)
+      const ttsUrl = `/api/tts?text=${encodeURIComponent(text)}&engine_type=piper`;
+      const response = await fetch(ttsUrl);
+      if (!response.ok) throw new Error("TTS endpoint error: " + response.status);
+
+      const blob = await response.blob();
+      const audioUrl = URL.createObjectURL(blob);
+      const audio = new Audio(audioUrl);
+      this.currentAudio = audio;
+
+      // Pipe to Web Audio visualizer if available
+      if (this.audioCtx && this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume();
+      }
+
+      // Word tracking for live speaking captions
+      const totalWords = this.speakingWords ? this.speakingWords.length : 1;
+      audio.ontimeupdate = () => {
+        if (audio.duration && this.speakingWords && this.speakingWords.length > 0) {
+          const progress = audio.currentTime / audio.duration;
+          const wordIdx = Math.min(Math.floor(progress * totalWords), totalWords - 1);
+          const active = this.speakingWords[wordIdx];
+          if (active) {
+            const prev = document.querySelectorAll('.caption-word.highlight');
+            prev.forEach(el => el.classList.remove('highlight'));
+            const activeEl = document.getElementById(active.elId);
+            if (activeEl) activeEl.classList.add('highlight');
+          }
+        }
+      };
+
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+        this.currentAudio = null;
+        this.isSpeaking = false;
+        this.setUIState('idle');
+        this.finalizeSpeakingCaption();
+        this.scheduleRecognitionRestart(100);
+      };
+
+      audio.onerror = (err) => {
+        console.warn("Audio playback error, falling back to Web Speech:", err);
+        this.fallbackWebSpeech(text);
+      };
+
+      await audio.play();
+
+    } catch (e) {
+      console.warn("Fast Piper TTS failed or offline, falling back:", e);
+      this.fallbackWebSpeech(text);
+    }
+  }
+
+  fallbackWebSpeech(text) {
+    if (!('speechSynthesis' in window) || !text) {
+      this.isSpeaking = false;
+      this.setUIState('idle');
+      return;
+    }
 
     const utterance = new SpeechSynthesisUtterance(text);
     if (this.britishVoice) {
@@ -170,7 +236,6 @@ class JarvisVoiceManager {
     utterance.pitch = 0.92;  // Calm, grounded resonance
     utterance.volume = 1.0;
 
-    // Synchronize live word highlight as speech synthesis boundary fires
     utterance.onboundary = (event) => {
       if (event.name === 'word') {
         this.highlightSpeakingWord(event.charIndex);

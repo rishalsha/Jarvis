@@ -11,10 +11,11 @@ from typing import Set
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
 
 from core.llm_engine import JarvisEngine
+from core.tts_engine import tts_engine
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("Jarvis.Server")
@@ -53,6 +54,28 @@ async def chat_api(req: ChatRequest):
     """Direct HTTP chat query."""
     res = engine.process_user_input(req.message)
     return res
+
+
+@app.get("/api/tts")
+async def get_tts_audio(text: str, engine_type: str = "piper"):
+    """
+    Ultra-fast TTS endpoint.
+    'piper': In-memory local neural ONNX synthesis (~75ms).
+    'edge': Microsoft Edge Neural en-GB-RyanNeural (~500ms).
+    """
+    if not text:
+        return Response(status_code=400)
+    try:
+        if engine_type == "edge":
+            audio_bytes = await tts_engine.synthesize_edge_mp3(text)
+            return Response(content=audio_bytes, media_type="audio/mpeg")
+        else:
+            loop = asyncio.get_running_loop()
+            wav_bytes = await loop.run_in_executor(None, tts_engine.synthesize_piper_wav, text)
+            return Response(content=wav_bytes, media_type="audio/wav")
+    except Exception as e:
+        logger.error(f"TTS generation error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.websocket("/ws")
