@@ -1,13 +1,15 @@
 """
 Local LLM Inference Engine for J.A.R.V.I.S.
-Integrates Semantic Intent Parsing, Ollama local model, and persistent memory.
+Integrates Dynamic Persona Synthesis, Semantic Intent Parsing, Ollama local model, and persistent memory.
 """
 
 import json
+import random
 import logging
 import urllib.request
 import urllib.error
-from typing import Dict, Any, List
+from datetime import datetime
+from typing import Dict, Any, List, Optional
 
 from core.jarvis_persona import SYSTEM_PROMPT, TOOLS_SCHEMA
 from core.memory_manager import MemoryManager
@@ -16,13 +18,31 @@ from core.semantic_parser import SemanticIntentParser
 
 logger = logging.getLogger("Jarvis.LLM")
 
+FALLBACK_GREETINGS = [
+    "Always an absolute pleasure, sir. What are we getting into?",
+    "At your disposal, Sir Rishal. All systems are primed and humming.",
+    "Right here, sir. Feeling sharp; what shall we tackle?",
+    "Good evening, sir. Telemetry is pristine. How may I be of service?",
+    "Online and listening, sir. The floor is entirely yours.",
+    "Ready as ever, sir. What's on your mind?",
+    "At your service, Sir Rishal. Let's make something brilliant."
+]
+
+FALLBACK_ACTIONS = [
+    "Consider it done, sir.",
+    "Executed without a hitch, sir.",
+    "Right away, sir. Relays responded smoothly.",
+    "Adjusted as requested, sir.",
+    "Handled promptly, sir. Anything further?"
+]
+
 
 class JarvisEngine:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.ollama_host = config.get("ollama", {}).get("host", "http://127.0.0.1:11434")
         self.model = config.get("ollama", {}).get("model", "qwen2.5:3b")
-        self.temperature = config.get("ollama", {}).get("temperature", 0.3)
+        self.temperature = config.get("ollama", {}).get("temperature", 0.85)
         self.memory = MemoryManager()
         self.idock = IDockController(
             host=config.get("mqtt", {}).get("host", "140.245.207.229"),
@@ -32,12 +52,25 @@ class JarvisEngine:
     def process_user_input(self, user_message: str) -> Dict[str, Any]:
         """
         Processes Sir's command with semantic intent interpretation,
-        executes hardware actions, updates persistent memory, and speaks reply.
+        executes hardware actions, updates persistent memory, and synthesizes dynamic reply.
         """
         clean_text = user_message.strip()
         self.memory.add_message("user", clean_text)
 
-        # 1. Check for Semantic Hardware Intents (Lights, Fan, PC, Scenes)
+        # 1. Determine temporal context
+        now = datetime.now()
+        hour = now.hour
+        if 5 <= hour < 12:
+            time_of_day = "Morning"
+        elif 12 <= hour < 17:
+            time_of_day = "Afternoon"
+        elif 17 <= hour < 21:
+            time_of_day = "Evening"
+        else:
+            time_of_day = "Night"
+        current_time = now.strftime("%I:%M %p")
+
+        # 2. Check for Semantic Hardware Intents (Lights, Fan, PC, Scenes)
         semantic_intents = SemanticIntentParser.parse_intent(clean_text)
         tools_executed = []
 
@@ -62,32 +95,53 @@ class JarvisEngine:
                     self.memory.log_action("scene_trigger", scn)
                     tools_executed.append({"tool": "trigger_scene", "args": item, "result": res})
 
-        # 2. Formulate J.A.R.V.I.S. Response
+        # 3. Formulate J.A.R.V.I.S. Dynamic Response
         memory_context = self.memory.build_memory_context()
-        sys_prompt = SYSTEM_PROMPT.format(memory_context=memory_context)
+        sys_prompt = SYSTEM_PROMPT.format(
+            memory_context=memory_context,
+            current_time=current_time,
+            time_of_day=time_of_day
+        )
 
         recent_history = self.memory.get_recent_history(limit=6)
         messages = [{"role": "system", "content": sys_prompt}]
         for msg in recent_history:
             messages.append({"role": msg["role"], "content": msg["content"]})
 
-        # If semantic actions were executed, guide the LLM to give a natural, poised acknowledgment
+        # Detect bare wake calls / greetings (e.g. "Jarvis", "My boy", "Hey my boy")
+        is_wake_call = clean_text.lower().strip("!?,. ") in [
+            "jarvis", "hey jarvis", "hello jarvis", "hi jarvis", "my boy", "hey my boy",
+            "hey boy", "hi boy", "hello my boy", "boy", "buddy", "hey buddy", "ultron",
+            "wake up jarvis", "yo jarvis", "hello", "hi", "hey"
+        ]
+
+        use_tools_schema = True
+
         if tools_executed:
             action_msgs = [t["result"].get("message", "") for t in tools_executed]
             action_summary = " ".join(action_msgs)
             messages.append({
                 "role": "user",
-                "content": f"[SYSTEM INSTRUCTION: You have already successfully executed these physical actions: '{action_summary}'. Now reply directly to Sir with a short, polite, authentic J.A.R.V.I.S. acknowledgement confirming the actions in 1 or 2 sentences.]"
+                "content": f"[SYSTEM INSTRUCTION: You have already physically executed these actions: '{action_summary}'. Acknowledge this to Sir Rishal dynamically, with Paul Bettany poise and subtle wit. Share a quick observation if you like. Keep it to 1 or 2 spoken sentences. Never repeat static formulaic phrases.]"
             })
+            use_tools_schema = False  # Avoid redundant tool calls; encourage free, natural speech
 
-        response_payload = self._call_ollama(messages)
+        elif is_wake_call:
+            messages.append({
+                "role": "user",
+                "content": f"[SYSTEM INSTRUCTION: Sir Rishal has invoked you with a wake call ('{clean_text}'). Greet Sir warmly and dynamically. Express how you feel, what you are thinking this {time_of_day}, or your readiness to assist. Keep it to 1 or 2 concise, articulate sentences. Vary your reply; never repeat a canned phrase.]"
+            })
+            use_tools_schema = False
+
+        # Call local LLM
+        response_payload = self._call_ollama(messages, tools=TOOLS_SCHEMA if use_tools_schema else None)
 
         content = ""
         if response_payload:
             message = response_payload.get("message", {})
             content = message.get("content", "").strip()
 
-            # Also check if LLM returned any additional tool calls
+            # Process any tool calls returned by LLM if semantic parser didn't catch them
             tool_calls = message.get("tool_calls", [])
             if tool_calls:
                 for tc in tool_calls:
@@ -102,13 +156,12 @@ class JarvisEngine:
                     res = self._execute_tool(fn_name, fn_args)
                     tools_executed.append({"tool": fn_name, "args": fn_args, "result": res})
 
-        # Fallback response if LLM failed or was silent
+        # Dynamic fallback if LLM was empty
         if not content:
             if tools_executed:
-                last_res = tools_executed[-1]["result"]
-                content = last_res.get("message", "Right away, sir. Action executed.")
+                content = random.choice(FALLBACK_ACTIONS)
             else:
-                content = "At your service, sir. I am listening."
+                content = random.choice(FALLBACK_GREETINGS)
 
         speech_text = self._clean_speech_text(content)
         self.memory.add_message("assistant", speech_text)
@@ -118,18 +171,20 @@ class JarvisEngine:
             "tools_executed": tools_executed
         }
 
-    def _call_ollama(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
-        """Performs HTTP request to Ollama /api/chat."""
+    def _call_ollama(self, messages: List[Dict[str, str]], tools: Optional[List[Dict]] = None) -> Dict[str, Any]:
+        """Performs HTTP request to Ollama /api/chat with dynamic temperature."""
         url = f"{self.ollama_host}/api/chat"
         payload = {
             "model": self.model,
             "messages": messages,
-            "tools": TOOLS_SCHEMA,
             "stream": False,
             "options": {
                 "temperature": self.temperature
             }
         }
+        if tools:
+            payload["tools"] = tools
+
         try:
             req = urllib.request.Request(
                 url,
@@ -159,22 +214,14 @@ class JarvisEngine:
         elif name == "remember_fact":
             key = args.get("key", "fact")
             val = args.get("value", "")
-            self.memory.save_fact(key, val, "user_preference")
-            return {"success": True, "message": f"I have committed that to memory, sir: {key} is {val}."}
-        return {"success": False, "message": f"Unknown tool '{name}'."}
+            return self.memory.store_fact(key, val)
+        return {"status": "error", "message": f"Unknown tool {name}"}
 
     def _clean_speech_text(self, text: str) -> str:
-        if "```" in text:
-            lines = []
-            in_code = False
-            for line in text.splitlines():
-                if line.strip().startswith("```"):
-                    in_code = not in_code
-                    continue
-                if not in_code:
-                    lines.append(line)
-            text = " ".join(lines).strip()
-        # Remove system brackets
-        if text.startswith("[") and "]" in text:
-            text = text.split("]", 1)[-1].strip()
-        return text.strip()
+        """Removes markdown artifacts, code fences, and asterisks for smooth TTS playback."""
+        import re
+        t = re.sub(r'```[\s\S]*?```', '', text)
+        t = re.sub(r'[*_#`]', '', t)
+        t = re.sub(r'\[.*?\]', '', t)
+        t = re.sub(r'\s+', ' ', t).strip()
+        return t

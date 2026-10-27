@@ -398,8 +398,8 @@ class JarvisVoiceManager {
       if (remainingCommand.length > 1) {
         this.sendUserSpeech(remainingCommand);
       } else {
-        this.setUIState('listening');
-        this.speakAsJarvis("At your service, sir. I am listening.");
+        // Sir invoked bare wake call ("Jarvis", "Hey my boy", etc.) -> send to backend for dynamic greeting!
+        this.sendUserSpeech(clean);
       }
     } else {
       this.sendUserSpeech(clean);
@@ -606,8 +606,8 @@ class JarvisVoiceManager {
       coreBtn.onclick = () => {
         this.playJarvisChime();
         this.setUIState('listening');
-        this.speakAsJarvis("Yes, sir? I am listening.");
         if (visualizer) visualizer.initMicAudio();
+        this.sendUserSpeech("Jarvis");
       };
     }
 
