@@ -57,10 +57,30 @@
           <span class="status-text" id="status-text">Awaiting Sir's invocation ("Jarvis")...</span>
         </div>
 
-        <div class="transcript-box" id="transcript-box">
-          <div class="hud-log-entry ai-entry">
-            <span class="speaker-tag">J.A.R.V.I.S.:</span>
-            <span class="speech-content" id="live-speech">At your service, sir. All workshop systems and neural cores are operational.</span>
+        <!-- DUAL-CHANNEL LIVE CAPTIONS HUD (Hearing & Speaking) -->
+        <div class="live-captions-container" id="live-captions-container">
+          <!-- Channel 1: Live Hearing (Sir's Voice) -->
+          <div class="caption-card hearing-card" id="hearing-card">
+            <div class="caption-header">
+              <span class="caption-dot hearing-dot"></span>
+              <span class="caption-channel-name">LIVE HEARING // SIR</span>
+              <span class="caption-live-tag" id="hearing-live-tag">READY</span>
+            </div>
+            <div class="caption-body" id="caption-hearing-text">
+              <span class="caption-placeholder">Speak anytime: "Jarvis, light up the room" or "My boy, spin up the fan"...</span>
+            </div>
+          </div>
+
+          <!-- Channel 2: Live Speaking (J.A.R.V.I.S. Voice) -->
+          <div class="caption-card speaking-card" id="speaking-card">
+            <div class="caption-header">
+              <span class="caption-dot speaking-dot"></span>
+              <span class="caption-channel-name">LIVE SPEAKING // J.A.R.V.I.S.</span>
+              <span class="caption-live-tag" id="speaking-live-tag">STANDBY</span>
+            </div>
+            <div class="caption-body" id="caption-speaking-text">
+              <span class="caption-speech">"At your service, sir. All workshop systems and neural cores are operational."</span>
+            </div>
           </div>
         </div>
       </div>

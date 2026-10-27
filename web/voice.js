@@ -157,6 +157,9 @@ class JarvisVoiceManager {
     this.isSpeaking = true;
     this.setUIState('speaking');
 
+    // Setup live speaking captions display with word spans
+    this.initSpeakingCaption(text);
+
     const utterance = new SpeechSynthesisUtterance(text);
     if (this.britishVoice) {
       utterance.voice = this.britishVoice;
@@ -167,15 +170,24 @@ class JarvisVoiceManager {
     utterance.pitch = 0.92;  // Calm, grounded resonance
     utterance.volume = 1.0;
 
+    // Synchronize live word highlight as speech synthesis boundary fires
+    utterance.onboundary = (event) => {
+      if (event.name === 'word') {
+        this.highlightSpeakingWord(event.charIndex);
+      }
+    };
+
     utterance.onend = () => {
       this.isSpeaking = false;
       this.setUIState('idle');
+      this.finalizeSpeakingCaption();
       this.scheduleRecognitionRestart(100);
     };
 
     utterance.onerror = () => {
       this.isSpeaking = false;
       this.setUIState('idle');
+      this.finalizeSpeakingCaption();
       this.scheduleRecognitionRestart(100);
     };
 
@@ -192,57 +204,51 @@ class JarvisVoiceManager {
 
     this.recognition = new SpeechRecognition();
     this.recognition.continuous = true;
-    this.recognition.interimResults = false;
+    this.recognition.interimResults = true; // Enables live real-time hearing captions!
     this.recognition.lang = 'en-US';
 
     this.recognition.onstart = () => {
       const micBtn = document.getElementById('mic-toggle-btn');
       if (micBtn) micBtn.classList.add('listening');
+      const tag = document.getElementById('hearing-live-tag');
+      if (tag) tag.innerText = 'LISTENING';
     };
 
     this.recognition.onresult = (event) => {
       if (this.isSpeaking) return; // Ignore audio feedback while Jarvis speaks
 
-      const lastIdx = event.results.length - 1;
-      const transcript = event.results[lastIdx][0].transcript.trim();
-      const lower = transcript.toLowerCase();
+      let interimTranscript = '';
+      let finalTranscript = '';
 
-      console.log('[*] Voice Detected:', transcript);
-
-      // Check for wake word or direct call
-      const match = lower.match(this.wakeWordRegex);
-
-      if (match) {
-        this.playJarvisChime();
-        this.setUIState('listening');
-
-        // Extract command after wake word
-        const matchedPhrase = match[0];
-        let remainingCommand = transcript.substring(match.index + matchedPhrase.length).replace(/^[,.\s]+/, '').trim();
-
-        if (remainingCommand.length > 1) {
-          // Command was spoken together: "Hey Jarvis turn on the light"
-          this.sendUserSpeech(remainingCommand);
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const text = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += text + ' ';
         } else {
-          // Just called his name: "Hey Jarvis" or "My boy"
-          this.setUIState('listening');
-          this.speakAsJarvis("At your service, sir. I am listening.");
+          interimTranscript += text;
         }
-      } else {
-        // If already in listening mode or direct command given
-        this.sendUserSpeech(transcript);
+      }
+
+      // Stream live real-time words to caption HUD while Sir is speaking
+      if (interimTranscript) {
+        this.updateHearingCaption(interimTranscript, false);
+      }
+
+      // When the phrase is finalized
+      if (finalTranscript.trim()) {
+        const clean = finalTranscript.trim();
+        this.updateHearingCaption(clean, true);
+        this.handleCapturedSpeech(clean);
       }
     };
 
     this.recognition.onerror = (e) => {
-      // Don't crash on silence timeouts, keep running continuous loop
       if (e.error !== 'no-speech') {
         console.warn('Speech Recognition notice:', e.error);
       }
     };
 
     this.recognition.onend = () => {
-      // Always-listening auto restart loop!
       if (!this.isSpeaking) {
         this.scheduleRecognitionRestart(150);
       }
@@ -257,6 +263,129 @@ class JarvisVoiceManager {
     };
     window.addEventListener('click', startMic);
     window.addEventListener('keydown', startMic);
+  }
+
+  handleCapturedSpeech(transcript) {
+    const lower = transcript.toLowerCase();
+    console.log('[*] Final Speech Captured:', transcript);
+
+    const match = lower.match(this.wakeWordRegex);
+
+    if (match) {
+      this.playJarvisChime();
+      this.setUIState('listening');
+
+      const matchedPhrase = match[0];
+      let remainingCommand = transcript.substring(match.index + matchedPhrase.length).replace(/^[,.\s]+/, '').trim();
+
+      if (remainingCommand.length > 1) {
+        this.sendUserSpeech(remainingCommand);
+      } else {
+        this.setUIState('listening');
+        this.speakAsJarvis("At your service, sir. I am listening.");
+      }
+    } else {
+      this.sendUserSpeech(transcript);
+    }
+  }
+
+  updateHearingCaption(text, isFinal) {
+    const box = document.getElementById('caption-hearing-text');
+    const card = document.getElementById('hearing-card');
+    const tag = document.getElementById('hearing-live-tag');
+
+    if (!box) return;
+
+    if (card) card.classList.add('active');
+
+    if (isFinal) {
+      box.innerHTML = `<span class="caption-speech" style="color: #ffffff; font-weight: 600;">"${escapeHtml(text)}"</span>`;
+      if (tag) {
+        tag.innerText = 'CAPTURED';
+        tag.style.color = '#30d158';
+        tag.style.borderColor = '#30d158';
+      }
+      setTimeout(() => {
+        if (card) card.classList.remove('active');
+        if (tag) {
+          tag.innerText = 'LISTENING';
+          tag.style.color = '#00f3ff';
+          tag.style.borderColor = 'rgba(0, 243, 255, 0.3)';
+        }
+      }, 2000);
+    } else {
+      box.innerHTML = `<span class="caption-speech" style="color: #00f3ff;">"${escapeHtml(text)}</span><span class="interim-cursor"></span>"`;
+      if (tag) {
+        tag.innerText = 'HEARING...';
+        tag.style.color = '#00f3ff';
+      }
+    }
+  }
+
+  initSpeakingCaption(text) {
+    const box = document.getElementById('caption-speaking-text');
+    const card = document.getElementById('speaking-card');
+    const tag = document.getElementById('speaking-live-tag');
+
+    if (!box) return;
+    if (card) card.classList.add('speaking-active');
+    if (tag) {
+      tag.innerText = 'TRANSMITTING';
+      tag.style.color = '#00f3ff';
+      tag.style.borderColor = '#00f3ff';
+    }
+
+    // Split text into word spans with char indices for live highlight
+    this.speakingWords = [];
+    let html = '"';
+    let currentIdx = 0;
+    const words = text.split(/(\s+)/);
+
+    words.forEach((chunk, i) => {
+      if (/\S/.test(chunk)) {
+        html += `<span class="caption-word" id="sword-${this.speakingWords.length}">${escapeHtml(chunk)}</span>`;
+        this.speakingWords.push({ index: currentIdx, elId: `sword-${this.speakingWords.length}` });
+      } else {
+        html += chunk;
+      }
+      currentIdx += chunk.length;
+    });
+    html += '"';
+
+    box.innerHTML = html;
+  }
+
+  highlightSpeakingWord(charIndex) {
+    if (!this.speakingWords) return;
+    // Find closest word
+    let activeId = null;
+    for (let w of this.speakingWords) {
+      if (charIndex >= w.index) {
+        activeId = w.elId;
+      } else {
+        break;
+      }
+    }
+    if (activeId) {
+      // Remove previous highlights
+      const prev = document.querySelectorAll('.caption-word.highlight');
+      prev.forEach(el => el.classList.remove('highlight'));
+      const activeEl = document.getElementById(activeId);
+      if (activeEl) activeEl.classList.add('highlight');
+    }
+  }
+
+  finalizeSpeakingCaption() {
+    const card = document.getElementById('speaking-card');
+    const tag = document.getElementById('speaking-live-tag');
+    if (card) card.classList.remove('speaking-active');
+    if (tag) {
+      tag.innerText = 'STANDBY';
+      tag.style.color = 'rgba(0, 243, 255, 0.7)';
+      tag.style.borderColor = 'rgba(0, 243, 255, 0.3)';
+    }
+    const prev = document.querySelectorAll('.caption-word.highlight');
+    prev.forEach(el => el.classList.remove('highlight'));
   }
 
   scheduleRecognitionRestart(delayMs) {
@@ -396,6 +525,16 @@ function handleFormSubmit(e) {
 
 function jsonParseSafe(str) {
   try { return JSON.parse(str); } catch (e) { return null; }
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 window.addEventListener('DOMContentLoaded', () => {
