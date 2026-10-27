@@ -1,11 +1,11 @@
-# J.A.R.V.I.S. // Stark Industries Personal AI Companion
+# J.A.R.V.I.S. // Personal AI Voice Companion
 
 [![Local AI](https://img.shields.io/badge/Model-Qwen2.5%20(Local%20GPU)-00f3ff.svg)](#local-neural-brain)
 [![TTS](https://img.shields.io/badge/TTS-Piper%20ONNX%20(75ms)-30d158.svg)](#ultra-fast-neural-voice)
 [![Memory](https://img.shields.io/badge/RAG-SQLite%20FTS5%20BM25-ffaa00.svg)](#real-time-rag-memory-vault)
 [![IoT](https://img.shields.io/badge/IoT-iDock%20MQTT%20%2B%20WoL-00f3ff.svg)](#hardware--iot-infrastructure)
 
-A personal voice AI agent modeled after **Marvel's J.A.R.V.I.S.** (voiced by Paul Bettany), engineered to serve **Sir**. Features local GPU inference, instantaneous neural speech synthesis, real-time RAG memory recall, an interactive holographic Arc Reactor HUD, and unified hardware control through iDock.
+A private, 100% local voice-interactive personal AI assistant engineered for **Sir**. Features local GPU inference, instantaneous neural speech synthesis, real-time RAG memory recall, an interactive holographic Arc Reactor HUD with dynamic background neural links, and unified hardware control through iDock.
 
 ---
 
@@ -14,12 +14,12 @@ A personal voice AI agent modeled after **Marvel's J.A.R.V.I.S.** (voiced by Pau
 ### 1. 🧠 Local Neural Brain (Zero Cloud Latency)
 - **Local GPU Inference**: Powered by Ollama running on an NVIDIA RTX 3060 12GB GPU.
 - **Model**: `qwen2.5:3b` (scalable to `qwen2.5:7b` or `llama3.2:3b`).
-- **100% Private & Offline**: Core intelligence and telemetry stay strictly on your local machine.
+- **100% Private & Offline**: Core intelligence, memory, and telemetry stay strictly on your local machine.
 
 ### 2. ⚡ Ultra-Fast Local Neural Voice (~75ms Piper TTS)
 - **Engine**: Resident in-memory ONNX neural synthesis via **Piper TTS** (`en_GB-alan-medium`).
-- **Vocal Timbre**: Authentic Paul Bettany British RP cadence—poised, polite, and articulate.
-- **Speed & Tuning**: Tuned with `length_scale = 0.80` and `playbackRate = 1.10x` for crisp, brisk delivery.
+- **Vocal Timbre**: Polished, articulate, and poised British gentleman cadence.
+- **Speed & Tuning**: Tuned with `length_scale = 0.80` and `playbackRate = 1.10x` for brisk, crisp delivery.
 - **Strict Protocol**: Addressed strictly and solely as **"sir"** / **"Sir"** on every invocation.
 
 ### 3. 🔍 Real-Time RAG Memory Vault (SQLite FTS5 + BM25)
@@ -27,26 +27,27 @@ A personal voice AI agent modeled after **Marvel's J.A.R.V.I.S.** (voiced by Pau
 - **Sub-Millisecond Search**: Integrated SQLite **FTS5 full-text virtual table** with BM25 relevance ranking.
 - **Context Recall**: Ask anytime (*"What did I tell you about my secret project earlier?"* or *"Where did I say I might travel?"*), and J.A.R.V.I.S. searches the vault in `< 1ms` to answer with exact recall.
 
-### 4. 🎙️ 24/7 Always-Listening with Dual Live Captions
-- **Wide Wake Calls**: Responds to *"Jarvis"*, *"Hey Jarvis"*, *"Hello Jarvis"*, *"Ultron"*, and custom triggers.
-- **450ms Fast-Commit**: Eliminates the 2-second cloud silence lag; commits phrases 450ms after you pause speaking.
-- **Watchdog Auto-Revive**: Background heartbeat monitors microphone connection and auto-heals without UI lockups.
+### 4. 🎙️ 24/7 Always-Listening, Natural Pause Detection & Barge-In
+- **Wide Wake Calls**: Responds to *"Jarvis"*, *"Hey Jarvis"*, *"Hello Jarvis"*, and custom triggers.
+- **Natural Pause Detection (1100ms)**: Eliminates premature cut-offs, giving you room to pause and think while speaking.
+- **Voice Interruption (Barge-In)**: Intercepts active speech—if you speak while J.A.R.V.I.S. is talking, he stops immediately on the syllable to hear your command.
+- **Master Mic Control**: Touching the central Ultron Arc Reactor core mutes or unmutes the microphone.
 - **Live Dual-Channel Captions**:
   - `LIVE HEARING // SIR`: Real-time word-by-word streaming of your speech as you speak.
   - `LIVE SPEAKING // J.A.R.V.I.S.`: Dynamic highlighted words in sync with vocal audio playback.
 
-### 5. 🌀 Holographic Arc Reactor HUD & Sound Visualizer
-- **Web Audio API**: Concentric rotating rings and multi-band frequency visualizer reacting live to sound.
+### 5. 🌀 Holographic Arc Reactor HUD & Dynamic Neural Links
+- **Background Neural Links**: Full-window particle constellation of synaptic nodes and traveling action potentials reacting to voice and touch.
+- **Web Audio API**: Concentric rotating orbital rings and multi-band frequency visualizer reacting live to sound.
 - **HUD States**:
-  - `STANDBY`: Glowing cyan concentric idle pulse.
-  - `LISTENING`: Expands rings and dynamic frequency waves bounce to your voice.
-  - `THINKING`: High-speed amber orbital rotation while computing semantic actions.
+  - `LISTENING / ACTIVE`: Electric cyan concentric rotation and audio waveforms bouncing to your voice.
+  - `MUTED`: Subdued ruby pulse indicating microphone is off.
+  - `COMPUTING`: High-speed amber orbital rotation while processing semantic actions.
   - `SPEAKING`: Resonant visualizer oscillation in sync with J.A.R.V.I.S.'s speech.
-- **Stark Glass Chime**: Dual-harmonic acoustic glass tone (880Hz / 1760Hz) on wake calls.
 
 ### 6. 🏠 Hardware & Workstation Control (iDock Integration)
 - **Room Fan**: *"Jarvis, turn on the fan"* / *"Kill the fan"*
-- **Overhead Light**: *"Jarvis, illuminate the quarters"* / *"Turn off the light"*
+- **Overhead Light**: *"Jarvis, turn on the light"* / *"Turn off the light"*
 - **Desk Bulb**: *"Jarvis, toggle the desk bulb"*
 - **Desktop PC & Work Laptop**:
   - Multi-burst Wake-on-LAN magic packets (`UDP 192.168.1.255`, Tasmota relay, ESP32 relay, and PC Agent).
@@ -75,12 +76,12 @@ flowchart TD
     subgraph Brain & RAG
         Server --> RAG[Memory Vault / SQLite FTS5 BM25]
         RAG --> LLM[Ollama qwen2.5:3b / GPU VRAM]
-        LLM --> Persona[Paul Bettany Persona Synthesis]
+        LLM --> Persona[Personal AI Persona Synthesis]
     end
     
     Persona --> TTS[Piper Neural TTS ONNX / 75ms]
     TTS -->|WAV Audio Stream| HUD
-    HUD --> Visualizer[Arc Reactor Sound Visualizer]
+    HUD --> Visualizer[Arc Reactor & Background Neural Links]
 ```
 
 ---
@@ -95,7 +96,7 @@ Jarvis/
 ├── jarvis.desktop        # Linux desktop launcher shortcut
 ├── core/
 │   ├── llm_engine.py     # Local Ollama inference orchestrator & RAG injector
-│   ├── jarvis_persona.py # Marvel J.A.R.V.I.S. personality & function schemas
+│   ├── jarvis_persona.py # Personal AI persona & function schemas
 │   ├── tts_engine.py     # Resident Piper ONNX in-memory TTS engine (~75ms)
 │   ├── semantic_parser.py# Natural language semantic intent classifier
 │   ├── memory_manager.py # SQLite FTS5 BM25 RAG vault & entity extractor
@@ -106,9 +107,9 @@ Jarvis/
 │   └── jarvis_memory.db  # Persistent SQLite database (FTS5 indexed)
 └── web/
     ├── index.html        # Holographic Arc Reactor web dashboard
-    ├── style.css         # Cyber-obsidian & Stark cyan stylesheet
-    ├── visualizer.js     # Web Audio API canvas visualizer engine
-    └── voice.js          # Speech recognition, watchdog heartbeat & audio pipeline
+    ├── style.css         # Cyber-obsidian & electric cyan stylesheet
+    ├── visualizer.js     # Web Audio API canvas & background neural links engine
+    └── voice.js          # Speech recognition, barge-in, watchdog & audio pipeline
 ```
 
 ---
@@ -137,8 +138,8 @@ Open your browser and navigate to:
 **[http://localhost:8000](http://localhost:8000)**
 
 - Click anywhere or press any key to grant microphone audio permissions.
-- Say **"Jarvis"** or click the glowing Arc Reactor core.
-- You will hear the Stark Industries glass chime, and J.A.R.V.I.S. will acknowledge: *"At your service, sir."*
+- Say **"Jarvis"** or tap the glowing Ultron Arc Reactor core.
+- You will hear the HUD chime, and J.A.R.V.I.S. will acknowledge: *"At your service, sir."*
 
 ---
 
@@ -146,14 +147,14 @@ Open your browser and navigate to:
 
 | Intent | Spoken Variations |
 | :--- | :--- |
-| **Wake Call** | *"Jarvis"*, *"Hey Jarvis"*, *"Hello Jarvis"*, *"Ultron"* |
+| **Wake Call** | *"Jarvis"*, *"Hey Jarvis"*, *"Hello Jarvis"* |
 | **Room Lighting** | *"Turn on the light"*, *"Light up the room"*, *"Banish the shadows"*, *"Kill the lights"* |
 | **Ventilation** | *"Turn on the fan"*, *"Spin up the blades"*, *"Turn off the fan"* |
 | **Desk Bulb** | *"Turn on the desk bulb"*, *"Toggle the bulb"* |
 | **Desktop Workstation** | *"Wake my desktop"*, *"Boot my PC"*, *"Put my rig to sleep"*, *"Shut down the computer"* |
 | **Work Laptop** | *"Wake my laptop"*, *"Turn on the laptop"*, *"Put laptop to sleep"* |
-| **Information Storing** | *"Remember that my secret project is Quantum Iron"*, *"My wifi password is stark_tech"* |
-| **RAG Memory Recall** | *"What is my secret project?"*, *"What was the password I gave you earlier?"* |
+| **Information Storing** | *"Remember that my secret project is Quantum Project"*, *"My garage passcode is 4920"* |
+| **RAG Memory Recall** | *"What is my secret project?"*, *"What was the passcode I gave you earlier?"* |
 | **Atmosphere Presets** | *"Engage night mode"*, *"Activate all systems"* |
 
 ---
@@ -174,4 +175,4 @@ Open your browser and navigate to:
 
 ## 🛡️ License
 
-Built with pride by **Rishal** for personal workstation and workshop automation. Inspired by Stark Industries & Marvel's J.A.R.V.I.S.
+Built with pride by **Rishal** as a personal workstation and home automation companion.

@@ -1,14 +1,14 @@
 #!/bin/bash
 # ==============================================================
 # J.A.R.V.I.S. Neural Core Launcher
-# Stark Industries // Serving Sir Rishal
+# Personal AI Companion // Serving Sir
 # ==============================================================
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR"
 
 echo "=========================================================="
-echo "  INITIALIZING J.A.R.V.I.S. PROTOCOLS // STARK INDUSTRIES"
+echo "  INITIALIZING J.A.R.V.I.S. PROTOCOLS // PERSONAL NEURAL CORE"
 echo "=========================================================="
 
 # 1. Ensure Ollama service is active

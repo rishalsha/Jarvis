@@ -118,12 +118,12 @@ class MemoryManager:
 
     def _ensure_default_profile(self):
         defaults = {
-            "user_name": "Rishal",
+            "user_name": "Sir",
             "user_title": "Sir",
-            "assistant_identity": "J.A.R.V.I.S., the AI assistant created by Tony Stark, now serving Sir Rishal.",
-            "preferred_tone": "Respectful, polite, witty, concise British gentleman.",
-            "creator": "Tony Stark / Rishal",
-            "workshop_location": "Stark Workshop / Kerala"
+            "assistant_identity": "J.A.R.V.I.S., the personal AI assistant created by and directly serving Sir.",
+            "preferred_tone": "Respectful, polite, articulate, witty, concise gentleman.",
+            "creator": "Sir",
+            "workshop_location": "Personal Workshop"
         }
         for k, v in defaults.items():
             if not self.get_fact(k):

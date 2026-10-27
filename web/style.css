@@ -1,5 +1,5 @@
 /* =============================================================
-   J.A.R.V.I.S. HUD // STARK INDUSTRIES HOLOGRAPHIC THEME
+   J.A.R.V.I.S. HUD // HOLOGRAPHIC NEURAL INTERFACE
    ============================================================= */
 
 * {
@@ -92,7 +92,7 @@ body::after {
   box-shadow: 0 0 10px #00f3ff;
 }
 
-.stark-badge {
+.brand-badge {
   font-family: 'Orbitron', sans-serif;
   font-size: 1.15rem;
   font-weight: 900;

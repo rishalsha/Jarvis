@@ -1,6 +1,6 @@
 /**
  * J.A.R.V.I.S. Holographic Canvas, Background Neural Links & Sound Visualizer
- * Simulates Marvel Arc Reactor / Ultron HUD and a dynamic, sound-reactive Neural Synaptic Link field.
+ * Core interactive Ultron Arc Reactor HUD and dynamic, sound-reactive Neural Synaptic Link field.
  */
 
 // =========================================================================

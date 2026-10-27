@@ -43,7 +43,7 @@ class JarvisVoiceManager {
   }
 
   /**
-   * Synthesizes authentic Stark Industries HUD glass chime (dual harmonic frequency)
+   * Synthesizes authentic HUD glass chime (dual harmonic frequency)
    */
   playJarvisChime() {
     if (!this.audioCtx) return;
@@ -267,7 +267,7 @@ class JarvisVoiceManager {
       const blob = await response.blob();
       const audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(audioUrl);
-      audio.playbackRate = 1.10; // Snappy, brisk Stark AI cadence
+      audio.playbackRate = 1.10; // Snappy, brisk AI cadence
       this.currentAudio = audio;
 
       if (this.audioCtx && this.audioCtx.state === 'suspended') {

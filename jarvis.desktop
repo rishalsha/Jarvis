@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=J.A.R.V.I.S.
-Comment=Stark Industries Personal AI Voice Companion
+Comment=Personal AI Voice Companion
 Exec=/home/rishal/Jarvis/start.sh
 Icon=utilities-terminal
 Terminal=true
