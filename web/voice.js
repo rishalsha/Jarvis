@@ -1,7 +1,9 @@
 /**
- * J.A.R.V.I.S. Continuous Always-Listening Voice Engine & Ultron Reactive HUD
- * Listens 24/7 for wake calls ("Jarvis", "Hey Jarvis", "My boy", "Hey my boy", etc.)
- * Provides real-time Web Audio API sound reactivity and Paul Bettany British TTS.
+ * J.A.R.V.I.S. Voice Engine, Intelligent Pause Detection & Voice Interruption (Barge-In)
+ * - Master Mic Mute/Unmute by tapping the central Ultron Arc Reactor.
+ * - Listens until Sir actually finishes speaking (1100ms natural pause detection or isFinal).
+ * - Instant Voice Interruption (Barge-In): Stops J.A.R.V.I.S. speech immediately when Sir starts talking.
+ * - Live Dual-Channel Captions (Hearing & Speaking).
  */
 
 class JarvisVoiceManager {
@@ -11,13 +13,16 @@ class JarvisVoiceManager {
     this.isListening = true;
     this.isSpeaking = false;
     this.isRecognitionActive = false;
+    this.isMicMuted = false;
     this.restartTimer = null;
     this.audioCtx = null;
     this.britishVoice = null;
+    this.currentAudio = null;
     this.interimDebounceTimer = null;
     this.lastInterimTranscript = '';
     this.lastProcessedText = '';
     this.lastProcessedTime = 0;
+    this.speakingWords = [];
 
     // Wake words regex (Jarvis, my boy, hey my boy, Ultron, buddy, etc.)
     this.wakeWordRegex = /\b(jarvis|hey jarvis|hello jarvis|hi jarvis|ok jarvis|yo jarvis|wake up jarvis|my boy|hey my boy|hey boy|hi boy|hello my boy|boy|buddy|hey buddy|my man|ultron|computer|assistant)\b/i;
@@ -74,6 +79,102 @@ class JarvisVoiceManager {
     osc2.stop(now + 0.45);
   }
 
+  /**
+   * Mute Tone: Subdued low-frequency electrical power-down chirp
+   */
+  playMuteTone() {
+    if (!this.audioCtx) return;
+    if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+    const now = this.audioCtx.currentTime;
+    const osc = this.audioCtx.createOscillator();
+    const gain = this.audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(440, now);
+    osc.frequency.exponentialRampToValueAtTime(160, now + 0.26);
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+    osc.connect(gain);
+    gain.connect(this.audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.26);
+  }
+
+  /**
+   * Interruption Chime: Subtle click when Sir cuts in
+   */
+  playInterruptionChime() {
+    if (!this.audioCtx) return;
+    if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
+    const now = this.audioCtx.currentTime;
+    const osc = this.audioCtx.createOscillator();
+    const gain = this.audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(980, now);
+    osc.frequency.exponentialRampToValueAtTime(660, now + 0.1);
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    osc.connect(gain);
+    gain.connect(this.audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.1);
+  }
+
+  /**
+   * Master Mic Toggle: Touching the Ultron Arc Reactor mutes/unmutes the microphone
+   */
+  toggleMicMute() {
+    this.isMicMuted = !this.isMicMuted;
+
+    if (this.isMicMuted) {
+      this.cancelSpeakingAudio();
+      this.playMuteTone();
+      if (this.recognition) {
+        try { this.recognition.abort(); } catch(e) {}
+      }
+      this.isRecognitionActive = false;
+      this.setUIState('muted');
+
+      const tag = document.getElementById('hearing-live-tag');
+      if (tag) {
+        tag.innerText = 'MUTED';
+        tag.style.color = '#ff3b30';
+        tag.style.borderColor = '#ff3b30';
+      }
+      this.updateStatus('Ultron Core Muted. Tap Ultron to activate microphone, sir.');
+    } else {
+      this.playJarvisChime();
+      this.setUIState('listening');
+
+      const tag = document.getElementById('hearing-live-tag');
+      if (tag) {
+        tag.innerText = 'LISTENING';
+        tag.style.color = '#00f3ff';
+        tag.style.borderColor = 'rgba(0, 243, 255, 0.3)';
+      }
+      this.updateStatus('Ultron Active // Always listening for Sir. Tap Ultron to mute.');
+      if (visualizer) visualizer.initMicAudio();
+      this.startContinuousListening();
+    }
+  }
+
+  /**
+   * Halts any currently active speech audio immediately (Barge-In)
+   */
+  cancelSpeakingAudio() {
+    if (this.currentAudio) {
+      try {
+        this.currentAudio.pause();
+        this.currentAudio.currentTime = 0;
+      } catch(e) {}
+      this.currentAudio = null;
+    }
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    this.isSpeaking = false;
+    this.finalizeSpeakingCaption();
+  }
+
   initWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -111,7 +212,9 @@ class JarvisVoiceManager {
         chipIot.innerText = data.mqtt_connected ? 'iDOCK IOT: LINKED' : 'iDOCK IOT: CONNECTING';
       }
     } else if (data.type === 'state_change') {
-      this.setUIState(data.state);
+      if (!this.isMicMuted) {
+        this.setUIState(data.state);
+      }
       if (data.user_text) {
         this.appendTranscript('Sir', data.user_text);
       }
@@ -127,20 +230,11 @@ class JarvisVoiceManager {
 
     const selectVoice = () => {
       const voices = window.speechSynthesis.getVoices();
-      const preferred = [
-        'Google UK English Male',
-        'en-GB-Neural2-B',
-        'Daniel',
-        'Oliver',
-        'Arthur',
-        'en-GB'
-      ];
-
+      const preferred = ['Google UK English Male', 'en-GB-Neural2-B', 'Daniel', 'Oliver', 'Arthur', 'en-GB'];
       for (let p of preferred) {
         const found = voices.find(v => v.name.includes(p) || (v.lang === 'en-GB' && v.name.toLowerCase().includes('male')));
         if (found) {
           this.britishVoice = found;
-          console.log('[+] Selected J.A.R.V.I.S. Voice:', found.name);
           break;
         }
       }
@@ -158,20 +252,14 @@ class JarvisVoiceManager {
   async speakAsJarvis(text) {
     if (!text) return;
 
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
-    if (this.currentAudio) {
-      try { this.currentAudio.pause(); } catch(e) {}
-      this.currentAudio = null;
-    }
+    this.cancelSpeakingAudio();
 
     this.isSpeaking = true;
     this.setUIState('speaking');
     this.initSpeakingCaption(text);
 
     try {
-      // 1. Ultra-fast local neural Piper synthesis (~75ms, sub-100ms response)
+      // 1. Ultra-fast local neural Piper synthesis (~75ms, length_scale 0.80)
       const ttsUrl = `/api/tts?text=${encodeURIComponent(text)}&engine_type=piper`;
       const response = await fetch(ttsUrl);
       if (!response.ok) throw new Error("TTS endpoint error: " + response.status);
@@ -182,7 +270,6 @@ class JarvisVoiceManager {
       audio.playbackRate = 1.10; // Snappy, brisk Stark AI cadence
       this.currentAudio = audio;
 
-      // Pipe to Web Audio visualizer if available
       if (this.audioCtx && this.audioCtx.state === 'suspended') {
         this.audioCtx.resume();
       }
@@ -207,7 +294,9 @@ class JarvisVoiceManager {
         URL.revokeObjectURL(audioUrl);
         this.currentAudio = null;
         this.isSpeaking = false;
-        this.setUIState('idle');
+        if (!this.isMicMuted) {
+          this.setUIState('listening');
+        }
         this.finalizeSpeakingCaption();
         this.scheduleRecognitionRestart(100);
       };
@@ -228,7 +317,7 @@ class JarvisVoiceManager {
   fallbackWebSpeech(text) {
     if (!('speechSynthesis' in window) || !text) {
       this.isSpeaking = false;
-      this.setUIState('idle');
+      if (!this.isMicMuted) this.setUIState('listening');
       return;
     }
 
@@ -250,14 +339,14 @@ class JarvisVoiceManager {
 
     utterance.onend = () => {
       this.isSpeaking = false;
-      this.setUIState('idle');
+      if (!this.isMicMuted) this.setUIState('listening');
       this.finalizeSpeakingCaption();
       this.scheduleRecognitionRestart(100);
     };
 
     utterance.onerror = () => {
       this.isSpeaking = false;
-      this.setUIState('idle');
+      if (!this.isMicMuted) this.setUIState('listening');
       this.finalizeSpeakingCaption();
       this.scheduleRecognitionRestart(100);
     };
@@ -275,22 +364,20 @@ class JarvisVoiceManager {
 
     this.recognition = new SpeechRecognition();
     this.recognition.continuous = true;
-    this.recognition.interimResults = true; // Enables live real-time hearing captions!
+    this.recognition.interimResults = true; // Enables live real-time hearing captions
     this.recognition.lang = 'en-US';
 
     this.recognition.onstart = () => {
       this.isRecognitionActive = true;
-      const micBtn = document.getElementById('mic-toggle-btn');
-      if (micBtn) micBtn.classList.add('listening');
       const tag = document.getElementById('hearing-live-tag');
-      if (tag) {
+      if (tag && !this.isMicMuted) {
         tag.innerText = 'LISTENING';
         tag.style.color = '#00f3ff';
       }
     };
 
     this.recognition.onresult = (event) => {
-      if (this.isSpeaking) return; // Ignore audio feedback while Jarvis speaks
+      if (this.isMicMuted) return;
 
       let interimTranscript = '';
       let finalTranscript = '';
@@ -304,22 +391,37 @@ class JarvisVoiceManager {
         }
       }
 
-      // Stream live real-time words to caption HUD
+      const activeSpeech = (interimTranscript || finalTranscript).trim();
+
+      // =========================================================================
+      // VOICE INTERRUPTION / BARGE-IN:
+      // If J.A.R.V.I.S. is speaking and Sir speaks, HALT J.A.R.V.I.S. IMMEDIATELY!
+      // =========================================================================
+      if (this.isSpeaking && activeSpeech.length > 1) {
+        console.log('[!] Interruption detected from Sir! Halting Jarvis speech.');
+        this.cancelSpeakingAudio();
+        this.playInterruptionChime();
+        this.setUIState('listening');
+        this.updateStatus('Interrupted by Sir // Listening to your command...');
+      }
+
+      // Stream live real-time words to caption HUD while Sir speaks
       if (interimTranscript) {
         this.updateHearingCaption(interimTranscript, false);
         this.lastInterimTranscript = interimTranscript.trim();
 
-        // FAST-COMMIT: Don't wait 2 seconds for Chrome's sluggish cloud finalizer!
-        // As soon as Sir pauses for 450ms, commit the phrase immediately!
+        // INTELLIGENT PAUSE DETECTION:
+        // Wait 1100ms of true silence before finalizing interim speech!
+        // This prevents cutting Sir off mid-sentence while speaking naturally!
         if (this.interimDebounceTimer) clearTimeout(this.interimDebounceTimer);
         this.interimDebounceTimer = setTimeout(() => {
-          if (this.lastInterimTranscript && !this.isSpeaking) {
+          if (this.lastInterimTranscript && !this.isMicMuted) {
             const textToProcess = this.lastInterimTranscript;
             this.lastInterimTranscript = '';
             this.updateHearingCaption(textToProcess, true);
             this.handleCapturedSpeech(textToProcess);
           }
-        }, 450);
+        }, 1100);
       }
 
       // When the browser finalizes the phrase
@@ -344,18 +446,18 @@ class JarvisVoiceManager {
     this.recognition.onend = () => {
       this.isRecognitionActive = false;
       const tag = document.getElementById('hearing-live-tag');
-      if (tag && !this.isSpeaking) {
+      if (tag && !this.isSpeaking && !this.isMicMuted) {
         tag.innerText = 'RECONNECTING';
         tag.style.color = 'rgba(0, 243, 255, 0.5)';
       }
-      if (!this.isSpeaking) {
+      if (!this.isSpeaking && !this.isMicMuted) {
         this.scheduleRecognitionRestart(50);
       }
     };
 
     // Watchdog heartbeat: auto-revive recognition if Chrome drops it
     setInterval(() => {
-      if (!this.isSpeaking && !this.isRecognitionActive) {
+      if (!this.isSpeaking && !this.isRecognitionActive && !this.isMicMuted) {
         this.startContinuousListening();
       }
     }, 2000);
@@ -372,7 +474,7 @@ class JarvisVoiceManager {
   }
 
   handleCapturedSpeech(transcript) {
-    if (!transcript) return;
+    if (!transcript || this.isMicMuted) return;
     const clean = transcript.trim();
     if (!clean) return;
 
@@ -399,7 +501,7 @@ class JarvisVoiceManager {
       if (remainingCommand.length > 1) {
         this.sendUserSpeech(remainingCommand);
       } else {
-        // Sir invoked bare wake call ("Jarvis", "Hey my boy", etc.) -> send to backend for dynamic greeting!
+        // Sir invoked bare wake call ("Jarvis", etc.) -> send to backend for dynamic greeting
         this.sendUserSpeech(clean);
       }
     } else {
@@ -425,7 +527,7 @@ class JarvisVoiceManager {
       }
       setTimeout(() => {
         if (card) card.classList.remove('active');
-        if (tag) {
+        if (tag && !this.isMicMuted) {
           tag.innerText = 'LISTENING';
           tag.style.color = '#00f3ff';
           tag.style.borderColor = 'rgba(0, 243, 255, 0.3)';
@@ -459,7 +561,7 @@ class JarvisVoiceManager {
     let currentIdx = 0;
     const words = text.split(/(\s+)/);
 
-    words.forEach((chunk, i) => {
+    words.forEach((chunk) => {
       if (/\S/.test(chunk)) {
         html += `<span class="caption-word" id="sword-${this.speakingWords.length}">${escapeHtml(chunk)}</span>`;
         this.speakingWords.push({ index: currentIdx, elId: `sword-${this.speakingWords.length}` });
@@ -475,7 +577,6 @@ class JarvisVoiceManager {
 
   highlightSpeakingWord(charIndex) {
     if (!this.speakingWords) return;
-    // Find closest word
     let activeId = null;
     for (let w of this.speakingWords) {
       if (charIndex >= w.index) {
@@ -485,7 +586,6 @@ class JarvisVoiceManager {
       }
     }
     if (activeId) {
-      // Remove previous highlights
       const prev = document.querySelectorAll('.caption-word.highlight');
       prev.forEach(el => el.classList.remove('highlight'));
       const activeEl = document.getElementById(activeId);
@@ -508,13 +608,14 @@ class JarvisVoiceManager {
 
   scheduleRecognitionRestart(delayMs) {
     if (this.restartTimer) clearTimeout(this.restartTimer);
+    if (this.isMicMuted) return;
     this.restartTimer = setTimeout(() => {
       this.startContinuousListening();
     }, delayMs);
   }
 
   startContinuousListening() {
-    if (!this.recognition || this.isSpeaking || this.isRecognitionActive) return;
+    if (!this.recognition || this.isSpeaking || this.isRecognitionActive || this.isMicMuted) return;
     try {
       this.recognition.start();
     } catch (e) {
@@ -533,6 +634,10 @@ class JarvisVoiceManager {
   }
 
   setUIState(state) {
+    if (this.isMicMuted && state !== 'speaking' && state !== 'thinking') {
+      state = 'muted';
+    }
+
     if (visualizer) visualizer.setState(state);
 
     const coreBtn = document.getElementById('core-trigger-btn');
@@ -544,14 +649,19 @@ class JarvisVoiceManager {
       coreBtn.className = 'core-trigger-btn state-' + state;
     }
 
-    if (state === 'listening') {
+    if (state === 'muted') {
       if (coreText) coreText.innerText = 'ULTRON';
-      if (coreSub) coreSub.innerText = 'HEARING YOU';
+      if (coreSub) coreSub.innerText = 'MIC MUTED';
+      if (marker) marker.style.color = '#ff3b30';
+      this.updateStatus('Ultron Core Muted. Tap Ultron to activate microphone, sir.');
+    } else if (state === 'listening') {
+      if (coreText) coreText.innerText = 'ULTRON';
+      if (coreSub) coreSub.innerText = 'MIC ACTIVE';
       if (marker) marker.style.color = '#00f3ff';
-      this.updateStatus('Hearing your voice, sir...');
+      this.updateStatus('Ultron Active // Always listening for Sir. Tap Ultron to mute.');
     } else if (state === 'thinking') {
       if (coreText) coreText.innerText = 'J.A.R.V.I.S.';
-      if (coreSub) coreSub.innerText = 'EXECUTING';
+      if (coreSub) coreSub.innerText = 'COMPUTING';
       if (marker) marker.style.color = '#ffaa00';
       this.updateStatus('Interpreting semantic intent & executing actions, sir...');
     } else if (state === 'speaking') {
@@ -559,11 +669,6 @@ class JarvisVoiceManager {
       if (coreSub) coreSub.innerText = 'SPEAKING';
       if (marker) marker.style.color = '#00f3ff';
       this.updateStatus('Transmitting response to Sir...');
-    } else {
-      if (coreText) coreText.innerText = 'J.A.R.V.I.S.';
-      if (coreSub) coreSub.innerText = 'ALWAYS LISTENING';
-      if (marker) marker.style.color = '#00f3ff';
-      this.updateStatus('Always Listening // Call "Jarvis" or "My boy" anytime, sir.');
     }
   }
 
@@ -594,7 +699,7 @@ class JarvisVoiceManager {
       }
       if (dateEl) {
         const options = { weekday: 'short', month: 'short', day: 'numeric' };
-        dateEl.innerText = `${now.toLocaleDateString('en-US', options).toUpperCase()} // SIR RISHAL`;
+        dateEl.innerText = `${now.toLocaleDateString('en-US', options).toUpperCase()} // SIR`;
       }
     };
     update();
@@ -602,24 +707,13 @@ class JarvisVoiceManager {
   }
 
   initUI() {
+    // Touching the Ultron Arc Reactor directly toggles Mic Mute / Unmute
     const coreBtn = document.getElementById('core-trigger-btn');
     if (coreBtn) {
-      coreBtn.onclick = () => {
-        this.playJarvisChime();
-        this.setUIState('listening');
-        if (visualizer) visualizer.initMicAudio();
-        this.sendUserSpeech("Jarvis");
-      };
-    }
-
-    const micBtn = document.getElementById('mic-toggle-btn');
-    if (micBtn) {
-      micBtn.onclick = (e) => {
+      coreBtn.onclick = (e) => {
+        e.preventDefault();
         e.stopPropagation();
-        this.playJarvisChime();
-        this.setUIState('listening');
-        if (visualizer) visualizer.initMicAudio();
-        this.startContinuousListening();
+        this.toggleMicMute();
       };
     }
   }
@@ -629,17 +723,6 @@ function sendQuickText(text) {
   if (window.jarvisVoice) {
     window.jarvisVoice.playJarvisChime();
     window.jarvisVoice.sendUserSpeech(text);
-  }
-}
-
-function handleFormSubmit(e) {
-  e.preventDefault();
-  const input = document.getElementById('command-input');
-  if (!input) return;
-  const val = input.value.trim();
-  if (val && window.jarvisVoice) {
-    window.jarvisVoice.sendUserSpeech(val);
-    input.value = '';
   }
 }
 

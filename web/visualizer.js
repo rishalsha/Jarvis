@@ -1,15 +1,235 @@
 /**
- * J.A.R.V.I.S. Holographic Canvas & Web Audio Reactive Visualizer
- * Simulates Marvel Arc Reactor, rotating orbital HUD rings, and real-time audio waveforms.
+ * J.A.R.V.I.S. Holographic Canvas, Background Neural Links & Sound Visualizer
+ * Simulates Marvel Arc Reactor / Ultron HUD and a dynamic, sound-reactive Neural Synaptic Link field.
  */
 
+// =========================================================================
+// 1. BACKGROUND NEURAL LINK & SYNAPSE NETWORK (Full Window Canvas)
+// =========================================================================
+class NeuralSynapseVisualizer {
+  constructor(canvasId) {
+    this.canvas = document.getElementById(canvasId);
+    if (!this.canvas) return;
+    this.ctx = this.canvas.getContext('2d');
+    this.nodes = [];
+    this.pulses = [];
+    this.pointer = { x: -1000, y: -1000, active: false };
+    this.nodeCount = 68;
+    this.maxLinkDist = 145;
+    this.audioEnergy = 0;
+
+    this.resize();
+    this.initNodes();
+
+    window.addEventListener('resize', () => this.resize());
+    window.addEventListener('pointermove', (e) => {
+      this.pointer.x = e.clientX;
+      this.pointer.y = e.clientY;
+      this.pointer.active = true;
+    });
+    window.addEventListener('pointerleave', () => {
+      this.pointer.active = false;
+    });
+    window.addEventListener('pointerdown', (e) => {
+      this.pointer.x = e.clientX;
+      this.pointer.y = e.clientY;
+      this.pointer.active = true;
+      this.burstPulses(this.pointer.x, this.pointer.y);
+    });
+
+    this.animate = this.animate.bind(this);
+    requestAnimationFrame(this.animate);
+  }
+
+  resize() {
+    this.width = window.innerWidth;
+    this.height = window.innerHeight;
+    this.canvas.width = this.width;
+    this.canvas.height = this.height;
+  }
+
+  initNodes() {
+    this.nodes = [];
+    for (let i = 0; i < this.nodeCount; i++) {
+      this.nodes.push({
+        x: Math.random() * this.width,
+        y: Math.random() * this.height,
+        vx: (Math.random() - 0.5) * 0.65,
+        vy: (Math.random() - 0.5) * 0.65,
+        radius: 1.5 + Math.random() * 2.2,
+        pulseOffset: Math.random() * Math.PI * 2,
+        glowEnergy: 0,
+        isGolden: Math.random() < 0.18 // 18% golden synaptic relay hubs
+      });
+    }
+  }
+
+  burstPulses(x, y) {
+    // Spawns electrical synaptic bursts outward from touch/click point
+    for (let node of this.nodes) {
+      const dx = node.x - x;
+      const dy = node.y - y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 200) {
+        node.glowEnergy = 1.0;
+      }
+    }
+  }
+
+  setAudioEnergy(energy) {
+    this.audioEnergy = energy;
+    if (energy > 0.35 && Math.random() < 0.25) {
+      // Spawn random action potential along an active link
+      const idx1 = Math.floor(Math.random() * this.nodes.length);
+      const n1 = this.nodes[idx1];
+      for (let j = 0; j < this.nodes.length; j++) {
+        const n2 = this.nodes[j];
+        const dx = n2.x - n1.x;
+        const dy = n2.y - n1.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 30 && dist < this.maxLinkDist) {
+          this.pulses.push({
+            x1: n1.x, y1: n1.y,
+            x2: n2.x, y2: n2.y,
+            progress: 0,
+            speed: 0.035 + (energy * 0.04),
+            color: n1.isGolden ? '#ffaa00' : '#00f3ff'
+          });
+          break;
+        }
+      }
+    }
+  }
+
+  animate() {
+    this.ctx.clearRect(0, 0, this.width, this.height);
+
+    const boost = this.audioEnergy; // 0.0 to 1.0 live audio boost
+
+    // 1. Update and draw nodes
+    for (let node of this.nodes) {
+      node.x += node.vx * (1 + boost * 0.8);
+      node.y += node.vy * (1 + boost * 0.8);
+
+      // Bounce off screen boundaries with padding
+      if (node.x < 10) { node.x = 10; node.vx *= -1; }
+      if (node.x > this.width - 10) { node.x = this.width - 10; node.vx *= -1; }
+      if (node.y < 10) { node.y = 10; node.vy *= -1; }
+      if (node.y > this.height - 10) { node.y = this.height - 10; node.vy *= -1; }
+
+      // Decay glow
+      if (node.glowEnergy > 0) node.glowEnergy -= 0.02;
+
+      // Pointer proximity pull
+      if (this.pointer.active) {
+        const pdx = this.pointer.x - node.x;
+        const pdy = this.pointer.y - node.y;
+        const pdist = Math.sqrt(pdx * pdx + pdy * pdy);
+        if (pdist < 180 && pdist > 5) {
+          node.x += (pdx / pdist) * 0.45;
+          node.y += (pdy / pdist) * 0.45;
+        }
+      }
+    }
+
+    // 2. Draw Synaptic Link Connectors (Axons)
+    const len = this.nodes.length;
+    for (let i = 0; i < len; i++) {
+      const n1 = this.nodes[i];
+      for (let j = i + 1; j < len; j++) {
+        const n2 = this.nodes[j];
+        const dx = n2.x - n1.x;
+        const dy = n2.y - n1.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < this.maxLinkDist) {
+          const proximityAlpha = (1 - (dist / this.maxLinkDist));
+          const alpha = Math.min(0.85, proximityAlpha * (0.28 + (boost * 0.55)));
+          
+          this.ctx.beginPath();
+          this.ctx.moveTo(n1.x, n1.y);
+          this.ctx.lineTo(n2.x, n2.y);
+
+          if (n1.isGolden || n2.isGolden) {
+            this.ctx.strokeStyle = `rgba(255, 170, 0, ${alpha * 0.9})`;
+            this.ctx.lineWidth = 1 + (boost * 1.2);
+          } else {
+            this.ctx.strokeStyle = `rgba(0, 243, 255, ${alpha})`;
+            this.ctx.lineWidth = 0.8 + (boost * 0.8);
+          }
+          this.ctx.stroke();
+        }
+      }
+
+      // Pointer direct link
+      if (this.pointer.active) {
+        const pdx = this.pointer.x - n1.x;
+        const pdy = this.pointer.y - n1.y;
+        const pdist = Math.sqrt(pdx * pdx + pdy * pdy);
+        if (pdist < 140) {
+          const pAlpha = (1 - (pdist / 140)) * 0.45;
+          this.ctx.beginPath();
+          this.ctx.moveTo(n1.x, n1.y);
+          this.ctx.lineTo(this.pointer.x, this.pointer.y);
+          this.ctx.strokeStyle = `rgba(0, 243, 255, ${pAlpha})`;
+          this.ctx.lineWidth = 1.2;
+          this.ctx.stroke();
+        }
+      }
+    }
+
+    // 3. Draw Action Potential Pulses (Traveling Neural Signals)
+    for (let pIdx = this.pulses.length - 1; pIdx >= 0; pIdx--) {
+      const p = this.pulses[pIdx];
+      p.progress += p.speed;
+
+      const px = p.x1 + (p.x2 - p.x1) * p.progress;
+      const py = p.y1 + (p.y2 - p.y1) * p.progress;
+
+      this.ctx.beginPath();
+      this.ctx.arc(px, py, 2.5 + (boost * 2), 0, Math.PI * 2);
+      this.ctx.fillStyle = p.color;
+      this.ctx.shadowColor = p.color;
+      this.ctx.shadowBlur = 8;
+      this.ctx.fill();
+      this.ctx.shadowBlur = 0;
+
+      if (p.progress >= 1.0) {
+        this.pulses.splice(pIdx, 1);
+      }
+    }
+
+    // 4. Draw Synaptic Node Orbs
+    for (let node of this.nodes) {
+      const pulseSize = node.radius + (boost * 3.5) + (node.glowEnergy * 2.5);
+      const color = node.isGolden ? '#ffaa00' : '#00f3ff';
+
+      this.ctx.beginPath();
+      this.ctx.arc(node.x, node.y, pulseSize, 0, Math.PI * 2);
+      this.ctx.fillStyle = color;
+      if (boost > 0.2 || node.glowEnergy > 0.2) {
+        this.ctx.shadowColor = color;
+        this.ctx.shadowBlur = 10 + (boost * 15);
+      }
+      this.ctx.fill();
+      this.ctx.shadowBlur = 0;
+    }
+
+    requestAnimationFrame(this.animate);
+  }
+}
+
+
+// =========================================================================
+// 2. CENTRAL HOLOGRAPHIC ULTRON ARC REACTOR & WAVEFORM VISUALIZER
+// =========================================================================
 class JarvisVisualizer {
   constructor(canvasId) {
     this.canvas = document.getElementById(canvasId);
     this.ctx = this.canvas.getContext('2d');
-    this.state = 'idle'; // 'idle', 'listening', 'thinking', 'speaking'
+    this.state = 'listening'; // 'listening', 'thinking', 'speaking', 'muted'
     this.rotation = 0;
-    this.rotationSpeed = 0.008;
+    this.rotationSpeed = 0.015;
     this.pulse = 0;
     this.audioData = new Uint8Array(64);
     this.analyser = null;
@@ -41,9 +261,11 @@ class JarvisVisualizer {
     } else if (newState === 'listening') {
       this.rotationSpeed = 0.018;
     } else if (newState === 'speaking') {
-      this.rotationSpeed = 0.025;
+      this.rotationSpeed = 0.028;
+    } else if (newState === 'muted') {
+      this.rotationSpeed = 0.003;
     } else {
-      this.rotationSpeed = 0.008;
+      this.rotationSpeed = 0.012;
     }
   }
 
@@ -71,7 +293,7 @@ class JarvisVisualizer {
 
     // Grab live audio levels
     let avgAudio = 0;
-    if (this.analyser && (this.state === 'listening' || this.state === 'speaking')) {
+    if (this.analyser && this.state !== 'muted') {
       this.analyser.getByteFrequencyData(this.audioData);
       let sum = 0;
       for (let i = 0; i < this.audioData.length; i++) {
@@ -83,25 +305,39 @@ class JarvisVisualizer {
       avgAudio = 0.35 + Math.sin(this.pulse * 3) * 0.25 + Math.cos(this.pulse * 5) * 0.15;
     }
 
+    // Feed live audio energy to background Neural Synapse Network
+    if (window.neuralVisualizer) {
+      window.neuralVisualizer.setAudioEnergy(avgAudio);
+    }
+
     const cx = this.centerX;
     const cy = this.centerY;
     const baseRadius = 85 + (avgAudio * 25);
 
-    // Primary Colors
+    // Color palette based on state
     let strokeColor = 'rgba(0, 243, 255, 0.5)';
     let glowColor = '#00f3ff';
     if (this.state === 'thinking') {
       strokeColor = 'rgba(255, 170, 0, 0.6)';
       glowColor = '#ffaa00';
-    } else if (this.state === 'listening') {
-      strokeColor = 'rgba(0, 243, 255, 0.85)';
+    } else if (this.state === 'speaking') {
+      strokeColor = 'rgba(0, 243, 255, 0.9)';
       glowColor = '#00f3ff';
+    } else if (this.state === 'muted') {
+      strokeColor = 'rgba(255, 59, 48, 0.5)';
+      glowColor = '#ff3b30';
     }
 
     // 1. Ambient Holographic Halo
     const grad = this.ctx.createRadialGradient(cx, cy, 30, cx, cy, baseRadius + 50);
     grad.addColorStop(0, 'rgba(0, 243, 255, 0.0)');
-    grad.addColorStop(0.7, this.state === 'thinking' ? 'rgba(255, 170, 0, 0.05)' : 'rgba(0, 243, 255, 0.08)');
+    if (this.state === 'muted') {
+      grad.addColorStop(0.7, 'rgba(255, 59, 48, 0.08)');
+    } else if (this.state === 'thinking') {
+      grad.addColorStop(0.7, 'rgba(255, 170, 0, 0.07)');
+    } else {
+      grad.addColorStop(0.7, 'rgba(0, 243, 255, 0.09)');
+    }
     grad.addColorStop(1, 'transparent');
     this.ctx.fillStyle = grad;
     this.ctx.beginPath();
@@ -113,8 +349,13 @@ class JarvisVisualizer {
     this.drawSegmentedRing(cx, cy, baseRadius + 30, -this.rotation * 1.2, 12, 0.08, strokeColor, 2);
     this.drawSegmentedRing(cx, cy, baseRadius + 18, this.rotation * 1.5, 24, 0.04, strokeColor, 1);
 
-    // 3. Audio Frequency Waveform around Perimeter
-    this.drawAudioFrequencyRing(cx, cy, baseRadius + 12, avgAudio, glowColor);
+    // 3. Audio Frequency Waveform around Perimeter (if unmuted)
+    if (this.state !== 'muted') {
+      this.drawAudioFrequencyRing(cx, cy, baseRadius + 12, avgAudio, glowColor);
+    } else {
+      // Muted indicator ring
+      this.drawSegmentedRing(cx, cy, baseRadius + 12, this.rotation * 0.2, 8, 0.15, 'rgba(255, 59, 48, 0.4)', 1.5);
+    }
 
     // 4. Inner Energy Ticks
     this.drawRadialTicks(cx, cy, baseRadius - 5, this.rotation * 0.5, 36, 6, strokeColor);
@@ -186,8 +427,11 @@ class JarvisVisualizer {
   }
 }
 
-// Global visualizer instance
+// Global visualizer instances
 let visualizer = null;
+let neuralVisualizer = null;
+
 window.addEventListener('DOMContentLoaded', () => {
-  visualizer = new JarvisVisualizer('jarvis-canvas');
+  window.neuralVisualizer = new NeuralSynapseVisualizer('neural-canvas');
+  window.visualizer = new JarvisVisualizer('jarvis-canvas');
 });

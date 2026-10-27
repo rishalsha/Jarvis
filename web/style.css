@@ -19,6 +19,17 @@ body, html {
   user-select: none;
 }
 
+/* Background Fullscreen Neural Synaptic Canvas */
+#neural-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 1;
+}
+
 /* Background Holographic Grid & Vignette */
 body::before {
   content: "";
@@ -30,7 +41,7 @@ body::before {
     linear-gradient(90deg, rgba(0, 243, 255, 0.03) 1px, transparent 1px);
   background-size: 100% 100%, 40px 40px, 40px 40px;
   pointer-events: none;
-  z-index: 1;
+  z-index: 2;
 }
 
 /* Scanline Effect */
@@ -46,7 +57,7 @@ body::after {
     transparent 2px
   );
   pointer-events: none;
-  z-index: 2;
+  z-index: 3;
   opacity: 0.6;
 }
 
@@ -265,6 +276,30 @@ body::after {
   color: #ffaa00;
 }
 
+/* State: Muted (Subdued Crimson/Amber Glow - Mic Off) */
+.core-trigger-btn.state-muted {
+  border-color: #ff3b30;
+  background: radial-gradient(circle, rgba(255, 59, 48, 0.35) 0%, rgba(35, 10, 10, 0.9) 75%);
+  box-shadow: 0 0 35px rgba(255, 59, 48, 0.6), inset 0 0 20px rgba(255, 59, 48, 0.4);
+  animation: coreMuted 2.5s infinite ease-in-out;
+}
+.core-trigger-btn.state-muted .core-text {
+  color: #ffb3b0;
+  text-shadow: 0 0 10px #ff3b30;
+}
+.core-trigger-btn.state-muted .core-sub {
+  color: #ff3b30;
+  text-shadow: 0 0 6px rgba(255, 59, 48, 0.8);
+}
+@keyframes coreMuted {
+  0%, 100% {
+    box-shadow: 0 0 25px rgba(255, 59, 48, 0.4), inset 0 0 15px rgba(255, 59, 48, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 45px rgba(255, 59, 48, 0.7), inset 0 0 30px rgba(255, 59, 48, 0.5);
+  }
+}
+
 /* State: Speaking (Deep resonant blue wave pulse) */
 .core-trigger-btn.state-speaking {
   border-color: #00f3ff;
@@ -445,94 +480,6 @@ body::after {
 
 .quick-btn:active {
   transform: scale(0.95);
-}
-
-/* -------------------------------------------------------------
-   COMMAND BAR & MIC INPUT
-   ------------------------------------------------------------- */
-.command-bar-wrap {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  max-width: 680px;
-  background: rgba(0, 15, 25, 0.8);
-  border: 1px solid rgba(0, 243, 255, 0.35);
-  border-radius: 14px;
-  padding: 6px 10px;
-  box-shadow: 0 0 20px rgba(0, 243, 255, 0.15);
-}
-
-.command-input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: #ffffff;
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 1.05rem;
-  font-weight: 600;
-  padding: 8px 12px;
-}
-
-.command-input::placeholder {
-  color: rgba(0, 243, 255, 0.35);
-  font-weight: 500;
-}
-
-.mic-toggle-btn {
-  background: rgba(0, 243, 255, 0.12);
-  border: 1px solid rgba(0, 243, 255, 0.3);
-  color: #00f3ff;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  margin-right: 8px;
-  transition: all 0.2s ease;
-  outline: none;
-}
-
-.mic-toggle-btn:hover {
-  background: rgba(0, 243, 255, 0.25);
-  box-shadow: 0 0 12px #00f3ff;
-}
-
-.mic-toggle-btn.listening {
-  background: rgba(0, 243, 255, 0.35);
-  border-color: #00f3ff;
-  box-shadow: 0 0 16px #00f3ff;
-  animation: pulseCore 1s infinite ease-in-out;
-}
-
-.mic-svg {
-  width: 20px;
-  height: 20px;
-  fill: currentColor;
-}
-
-.send-btn {
-  background: linear-gradient(135deg, rgba(0, 243, 255, 0.4) 0%, rgba(0, 150, 255, 0.6) 100%);
-  border: 1px solid #00f3ff;
-  color: #ffffff;
-  font-family: 'Orbitron', sans-serif;
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  padding: 10px 18px;
-  border-radius: 10px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.send-btn:hover {
-  box-shadow: 0 0 15px rgba(0, 243, 255, 0.6);
-}
-
-.send-btn:active {
-  transform: scale(0.94);
 }
 
 /* -------------------------------------------------------------
