@@ -1,22 +1,26 @@
 /**
- * J.A.R.V.I.S. Voice Recognition, Speech Synthesis & WebSocket Controller
- * Implements Paul Bettany British voice modulation, Marvel HUD chimes, and wake-word detection.
+ * J.A.R.V.I.S. Continuous Always-Listening Voice Engine & Ultron Reactive HUD
+ * Listens 24/7 for wake calls ("Jarvis", "Hey Jarvis", "My boy", "Hey my boy", etc.)
+ * Provides real-time Web Audio API sound reactivity and Paul Bettany British TTS.
  */
 
 class JarvisVoiceManager {
   constructor() {
     this.ws = null;
     this.recognition = null;
-    this.isListening = false;
+    this.isListening = true;
     this.isSpeaking = false;
-    this.wakeWords = ["jarvis", "hey jarvis", "ok jarvis"];
+    this.restartTimer = null;
     this.audioCtx = null;
     this.britishVoice = null;
+
+    // Wake words regex (Jarvis, my boy, hey my boy, Ultron, buddy, etc.)
+    this.wakeWordRegex = /\b(jarvis|hey jarvis|hello jarvis|hi jarvis|ok jarvis|yo jarvis|wake up jarvis|my boy|hey my boy|hey boy|hi boy|hello my boy|boy|buddy|hey buddy|my man|ultron|computer|assistant)\b/i;
 
     this.initAudioContext();
     this.initWebSocket();
     this.initSpeechSynthesis();
-    this.initSpeechRecognition();
+    this.initAlwaysListeningRecognition();
     this.initClock();
     this.initUI();
   }
@@ -39,13 +43,13 @@ class JarvisVoiceManager {
 
     const now = this.audioCtx.currentTime;
 
-    // Harmonic 1: High glass tone (880Hz -> A5)
+    // Harmonic 1: Glass tone (880Hz -> A5)
     const osc1 = this.audioCtx.createOscillator();
     const gain1 = this.audioCtx.createGain();
     osc1.type = 'sine';
     osc1.frequency.setValueAtTime(880, now);
     osc1.frequency.exponentialRampToValueAtTime(1320, now + 0.12);
-    gain1.gain.setValueAtTime(0.15, now);
+    gain1.gain.setValueAtTime(0.18, now);
     gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
     osc1.connect(gain1);
     gain1.connect(this.audioCtx.destination);
@@ -56,12 +60,12 @@ class JarvisVoiceManager {
     const osc2 = this.audioCtx.createOscillator();
     const gain2 = this.audioCtx.createGain();
     osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(1760, now + 0.05);
-    gain2.gain.setValueAtTime(0.08, now + 0.05);
+    osc2.frequency.setValueAtTime(1760, now + 0.04);
+    gain2.gain.setValueAtTime(0.09, now + 0.04);
     gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
     osc2.connect(gain2);
     gain2.connect(this.audioCtx.destination);
-    osc2.start(now + 0.05);
+    osc2.start(now + 0.04);
     osc2.stop(now + 0.45);
   }
 
@@ -72,8 +76,10 @@ class JarvisVoiceManager {
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
-      console.log('Connected to J.A.R.V.I.S. neural stream.');
-      this.updateStatus('Neural Core Online // Ready, sir.');
+      console.log('[+] J.A.R.V.I.S. Neural Stream Connected.');
+      this.updateStatus('Neural Core Active // Always Listening for Sir...');
+      const chipCore = document.getElementById('chip-core-label');
+      if (chipCore) chipCore.innerText = 'NEURAL CORE: ONLINE';
     };
 
     this.ws.onmessage = (event) => {
@@ -87,7 +93,7 @@ class JarvisVoiceManager {
 
     this.ws.onclose = () => {
       this.updateStatus('Reconnecting to neural stream...');
-      setTimeout(() => this.initWebSocket(), 3000);
+      setTimeout(() => this.initWebSocket(), 2500);
     };
   }
 
@@ -96,8 +102,8 @@ class JarvisVoiceManager {
 
     if (data.type === 'init') {
       const chipIot = document.getElementById('chip-iot-label');
-      if (chipIot && data.mqtt_connected) {
-        chipIot.innerText = 'iDOCK IOT: LINKED';
+      if (chipIot) {
+        chipIot.innerText = data.mqtt_connected ? 'iDOCK IOT: LINKED' : 'iDOCK IOT: CONNECTING';
       }
     } else if (data.type === 'state_change') {
       this.setUIState(data.state);
@@ -108,25 +114,14 @@ class JarvisVoiceManager {
       const reply = data.reply || 'At your command, sir.';
       this.appendTranscript('J.A.R.V.I.S.', reply);
       this.speakAsJarvis(reply);
-
-      // If tools were executed, update IoT indicators
-      if (data.tools && data.tools.length > 0) {
-        data.tools.forEach(t => {
-          console.log('Action complete:', t);
-        });
-      }
     }
   }
 
   initSpeechSynthesis() {
-    if (!('speechSynthesis' in window)) {
-      console.warn('Speech synthesis not supported in this browser.');
-      return;
-    }
+    if (!('speechSynthesis' in window)) return;
 
     const selectVoice = () => {
       const voices = window.speechSynthesis.getVoices();
-      // Search for British male voices to match Paul Bettany's cadence
       const preferred = [
         'Google UK English Male',
         'en-GB-Neural2-B',
@@ -140,7 +135,7 @@ class JarvisVoiceManager {
         const found = voices.find(v => v.name.includes(p) || (v.lang === 'en-GB' && v.name.toLowerCase().includes('male')));
         if (found) {
           this.britishVoice = found;
-          console.log('Selected J.A.R.V.I.S. voice:', found.name);
+          console.log('[+] Selected J.A.R.V.I.S. Voice:', found.name);
           break;
         }
       }
@@ -158,7 +153,7 @@ class JarvisVoiceManager {
   speakAsJarvis(text) {
     if (!('speechSynthesis' in window) || !text) return;
 
-    window.speechSynthesis.cancel(); // Stop any pending speech
+    window.speechSynthesis.cancel();
     this.isSpeaking = true;
     this.setUIState('speaking');
 
@@ -167,31 +162,31 @@ class JarvisVoiceManager {
       utterance.voice = this.britishVoice;
     }
 
-    // Paul Bettany voice modulation parameters
     utterance.lang = 'en-GB';
-    utterance.rate = 0.98;   // Measured, deliberate British cadence
-    utterance.pitch = 0.92;  // Slightly deeper, calm resonance
+    utterance.rate = 0.98;   // British deliberate cadence
+    utterance.pitch = 0.92;  // Calm, grounded resonance
     utterance.volume = 1.0;
 
     utterance.onend = () => {
       this.isSpeaking = false;
       this.setUIState('idle');
+      this.scheduleRecognitionRestart(100);
     };
 
-    utterance.onerror = (err) => {
-      console.error('Speech synthesis error:', err);
+    utterance.onerror = () => {
       this.isSpeaking = false;
       this.setUIState('idle');
+      this.scheduleRecognitionRestart(100);
     };
 
     window.speechSynthesis.speak(utterance);
   }
 
-  initSpeechRecognition() {
+  initAlwaysListeningRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       console.warn('SpeechRecognition API not available in this browser.');
-      this.updateStatus('Voice input not supported; manual input enabled, sir.');
+      this.updateStatus('Voice recognition not supported in browser; manual entry active, sir.');
       return;
     }
 
@@ -201,96 +196,82 @@ class JarvisVoiceManager {
     this.recognition.lang = 'en-US';
 
     this.recognition.onstart = () => {
-      this.isListening = true;
       const micBtn = document.getElementById('mic-toggle-btn');
       if (micBtn) micBtn.classList.add('listening');
     };
 
     this.recognition.onresult = (event) => {
-      if (this.isSpeaking) return; // Don't transcribe Jarvis's own voice
+      if (this.isSpeaking) return; // Ignore audio feedback while Jarvis speaks
 
       const lastIdx = event.results.length - 1;
       const transcript = event.results[lastIdx][0].transcript.trim();
       const lower = transcript.toLowerCase();
 
-      console.log('Voice heard:', transcript);
+      console.log('[*] Voice Detected:', transcript);
 
-      // Check for wake word invocation or active conversation
-      const hasWakeWord = this.wakeWords.some(w => lower.includes(w));
+      // Check for wake word or direct call
+      const match = lower.match(this.wakeWordRegex);
 
-      if (hasWakeWord) {
+      if (match) {
         this.playJarvisChime();
-        let cleanedCommand = transcript;
-        // Strip wake word from command if command followed immediately
-        for (let w of this.wakeWords) {
-          if (lower.startsWith(w)) {
-            cleanedCommand = transcript.substring(w.length).replace(/^[,.\s]+/, '');
-            break;
-          }
-        }
+        this.setUIState('listening');
 
-        if (cleanedCommand.length > 1) {
-          this.sendUserSpeech(cleanedCommand);
+        // Extract command after wake word
+        const matchedPhrase = match[0];
+        let remainingCommand = transcript.substring(match.index + matchedPhrase.length).replace(/^[,.\s]+/, '').trim();
+
+        if (remainingCommand.length > 1) {
+          // Command was spoken together: "Hey Jarvis turn on the light"
+          this.sendUserSpeech(remainingCommand);
         } else {
-          // Just said "Jarvis"
+          // Just called his name: "Hey Jarvis" or "My boy"
           this.setUIState('listening');
-          this.speakAsJarvis("At your service, sir. How may I assist you?");
+          this.speakAsJarvis("At your service, sir. I am listening.");
         }
-      } else if (this.isListening) {
-        // Continuous input mode
+      } else {
+        // If already in listening mode or direct command given
         this.sendUserSpeech(transcript);
       }
     };
 
     this.recognition.onerror = (e) => {
-      console.warn('Speech recognition status:', e.error);
-    };
-
-    this.recognition.onend = () => {
-      // Auto-restart continuous listening unless stopped
-      if (this.isListening) {
-        try {
-          this.recognition.start();
-        } catch (e) {}
+      // Don't crash on silence timeouts, keep running continuous loop
+      if (e.error !== 'no-speech') {
+        console.warn('Speech Recognition notice:', e.error);
       }
     };
 
-    // Auto-start listening on first user interaction
-    const startOnce = () => {
-      this.startListening();
-      if (visualizer) visualizer.initMicAudio();
-      window.removeEventListener('click', startOnce);
-      window.removeEventListener('keydown', startOnce);
+    this.recognition.onend = () => {
+      // Always-listening auto restart loop!
+      if (!this.isSpeaking) {
+        this.scheduleRecognitionRestart(150);
+      }
     };
-    window.addEventListener('click', startOnce);
-    window.addEventListener('keydown', startOnce);
+
+    // Auto-boot on first user gesture
+    const startMic = () => {
+      this.startContinuousListening();
+      if (visualizer) visualizer.initMicAudio();
+      window.removeEventListener('click', startMic);
+      window.removeEventListener('keydown', startMic);
+    };
+    window.addEventListener('click', startMic);
+    window.addEventListener('keydown', startMic);
   }
 
-  startListening() {
-    if (!this.recognition) return;
+  scheduleRecognitionRestart(delayMs) {
+    if (this.restartTimer) clearTimeout(this.restartTimer);
+    this.restartTimer = setTimeout(() => {
+      this.startContinuousListening();
+    }, delayMs);
+  }
+
+  startContinuousListening() {
+    if (!this.recognition || this.isSpeaking) return;
     try {
       this.recognition.start();
-      this.isListening = true;
-      this.updateStatus('Awaiting Sir\'s invocation ("Jarvis")...');
-    } catch (e) {}
-  }
-
-  stopListening() {
-    if (!this.recognition) return;
-    this.isListening = false;
-    this.recognition.stop();
-    const micBtn = document.getElementById('mic-toggle-btn');
-    if (micBtn) micBtn.classList.remove('listening');
-  }
-
-  toggleListening() {
-    if (this.isListening) {
-      this.stopListening();
-      this.updateStatus('Microphone standby, sir.');
-    } else {
-      this.startListening();
-      this.playJarvisChime();
-      if (visualizer) visualizer.initMicAudio();
+    } catch (e) {
+      // Recognition already running
     }
   }
 
@@ -306,6 +287,7 @@ class JarvisVoiceManager {
     if (visualizer) visualizer.setState(state);
 
     const coreBtn = document.getElementById('core-trigger-btn');
+    const coreText = document.getElementById('core-text');
     const coreSub = document.getElementById('core-sub');
     const marker = document.getElementById('status-marker');
 
@@ -314,21 +296,25 @@ class JarvisVoiceManager {
     }
 
     if (state === 'listening') {
-      if (coreSub) coreSub.innerText = 'LISTENING';
+      if (coreText) coreText.innerText = 'ULTRON';
+      if (coreSub) coreSub.innerText = 'HEARING YOU';
       if (marker) marker.style.color = '#00f3ff';
       this.updateStatus('Hearing your voice, sir...');
     } else if (state === 'thinking') {
-      if (coreSub) coreSub.innerText = 'PROCESSING';
+      if (coreText) coreText.innerText = 'J.A.R.V.I.S.';
+      if (coreSub) coreSub.innerText = 'EXECUTING';
       if (marker) marker.style.color = '#ffaa00';
-      this.updateStatus('Processing neural logic and executing actions, sir...');
+      this.updateStatus('Interpreting semantic intent & executing actions, sir...');
     } else if (state === 'speaking') {
+      if (coreText) coreText.innerText = 'J.A.R.V.I.S.';
       if (coreSub) coreSub.innerText = 'SPEAKING';
       if (marker) marker.style.color = '#00f3ff';
-      this.updateStatus('J.A.R.V.I.S. transmitting response...');
+      this.updateStatus('Transmitting response to Sir...');
     } else {
-      if (coreSub) coreSub.innerText = 'STANDBY';
+      if (coreText) coreText.innerText = 'J.A.R.V.I.S.';
+      if (coreSub) coreSub.innerText = 'ALWAYS LISTENING';
       if (marker) marker.style.color = '#00f3ff';
-      this.updateStatus('Awaiting Sir\'s invocation ("Jarvis")...');
+      this.updateStatus('Always Listening // Call "Jarvis" or "My boy" anytime, sir.');
     }
   }
 
@@ -381,7 +367,10 @@ class JarvisVoiceManager {
     if (micBtn) {
       micBtn.onclick = (e) => {
         e.stopPropagation();
-        this.toggleListening();
+        this.playJarvisChime();
+        this.setUIState('listening');
+        if (visualizer) visualizer.initMicAudio();
+        this.startContinuousListening();
       };
     }
   }
@@ -409,7 +398,6 @@ function jsonParseSafe(str) {
   try { return JSON.parse(str); } catch (e) { return null; }
 }
 
-// Global voice manager instance
 window.addEventListener('DOMContentLoaded', () => {
   window.jarvisVoice = new JarvisVoiceManager();
 });
