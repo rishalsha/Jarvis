@@ -20,12 +20,12 @@ logger = logging.getLogger("Jarvis.LLM")
 
 FALLBACK_GREETINGS = [
     "Always an absolute pleasure, sir. What are we getting into?",
-    "At your disposal, Sir Rishal. All systems are primed and humming.",
+    "At your disposal, sir. All systems are primed and humming.",
     "Right here, sir. Feeling sharp; what shall we tackle?",
     "Good evening, sir. Telemetry is pristine. How may I be of service?",
     "Online and listening, sir. The floor is entirely yours.",
     "Ready as ever, sir. What's on your mind?",
-    "At your service, Sir Rishal. Let's make something brilliant."
+    "At your service, sir. Let's make something brilliant."
 ]
 
 FALLBACK_ACTIONS = [
@@ -122,14 +122,14 @@ class JarvisEngine:
             action_summary = " ".join(action_msgs)
             messages.append({
                 "role": "user",
-                "content": f"[SYSTEM INSTRUCTION: You have already physically executed these actions: '{action_summary}'. Acknowledge this to Sir Rishal dynamically, with Paul Bettany poise and subtle wit. Share a quick observation if you like. Keep it to 1 or 2 spoken sentences. Never repeat static formulaic phrases.]"
+                "content": f"[SYSTEM INSTRUCTION: You have already physically executed these actions: '{action_summary}'. Acknowledge this to Sir dynamically, with Paul Bettany poise and subtle wit. Address him ONLY as 'sir'. Share a quick observation if you like. Keep it to 1 or 2 spoken sentences. Never repeat static formulaic phrases.]"
             })
             use_tools_schema = False  # Avoid redundant tool calls; encourage free, natural speech
 
         elif is_wake_call:
             messages.append({
                 "role": "user",
-                "content": f"[SYSTEM INSTRUCTION: Sir Rishal has invoked you with a wake call ('{clean_text}'). Greet Sir warmly and dynamically. Express how you feel, what you are thinking this {time_of_day}, or your readiness to assist. Keep it to 1 or 2 concise, articulate sentences. Vary your reply; never repeat a canned phrase.]"
+                "content": f"[SYSTEM INSTRUCTION: Sir has invoked you with a wake call ('{clean_text}'). Greet Sir warmly and dynamically. Address him ONLY as 'sir'. Express how you feel, what you are thinking this {time_of_day}, or your readiness to assist. Keep it to 1 or 2 concise, articulate sentences. Vary your reply; never repeat a canned phrase.]"
             })
             use_tools_schema = False
 
@@ -218,10 +218,21 @@ class JarvisEngine:
         return {"status": "error", "message": f"Unknown tool {name}"}
 
     def _clean_speech_text(self, text: str) -> str:
-        """Removes markdown artifacts, code fences, and asterisks for smooth TTS playback."""
+        """Removes markdown artifacts and enforces strict 'sir' address rule."""
         import re
         t = re.sub(r'```[\s\S]*?```', '', text)
         t = re.sub(r'[*_#`]', '', t)
         t = re.sub(r'\[.*?\]', '', t)
+        
+        # Enforce strict address rule: call user ONLY "sir" or "Sir"
+        t = re.sub(r'\bmy\s+boy\b', 'sir', t, flags=re.IGNORECASE)
+        t = re.sub(r'\bsir\s+rishal\b', 'sir', t, flags=re.IGNORECASE)
+        t = re.sub(r'\brishal\b', 'sir', t, flags=re.IGNORECASE)
+        t = re.sub(r'\bbuddy\b', 'sir', t, flags=re.IGNORECASE)
+
+        # Capitalize leading Sir if sentence begins with it
+        t = re.sub(r'^\s*sir\b', 'Sir', t)
+        t = re.sub(r'([.?!]\s*)sir\b', r'\1Sir', t)
+
         t = re.sub(r'\s+', ' ', t).strip()
         return t

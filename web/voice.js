@@ -179,6 +179,7 @@ class JarvisVoiceManager {
       const blob = await response.blob();
       const audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(audioUrl);
+      audio.playbackRate = 1.10; // Snappy, brisk Stark AI cadence
       this.currentAudio = audio;
 
       // Pipe to Web Audio visualizer if available
@@ -237,8 +238,8 @@ class JarvisVoiceManager {
     }
 
     utterance.lang = 'en-GB';
-    utterance.rate = 0.98;   // British deliberate cadence
-    utterance.pitch = 0.92;  // Calm, grounded resonance
+    utterance.rate = 1.15;   // Faster, articulate British cadence
+    utterance.pitch = 0.95;  // Calm, grounded resonance
     utterance.volume = 1.0;
 
     utterance.onboundary = (event) => {

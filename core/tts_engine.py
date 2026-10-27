@@ -27,22 +27,24 @@ class JarvisTTS:
         else:
             logger.warning(f"Piper model not found at {self.piper_model_path}")
 
-    def synthesize_piper_wav(self, text: str) -> bytes:
-        """Synthesizes text to WAV bytes in ~70-90ms using in-memory ONNX session."""
+    def synthesize_piper_wav(self, text: str, speed_scale: float = 0.80) -> bytes:
+        """Synthesizes text to WAV bytes in ~70-90ms with brisk, crisp British cadence (length_scale=0.80)."""
         if not self.piper_voice:
             raise RuntimeError("Piper voice model is not initialized.")
         
+        from piper.config import SynthesisConfig
+        syn_config = SynthesisConfig(length_scale=speed_scale)
         clean_text = text.replace("*", "").replace("#", "").strip()
         buf = io.BytesIO()
         with wave.open(buf, 'wb') as wav_file:
-            self.piper_voice.synthesize_wav(clean_text, wav_file)
+            self.piper_voice.synthesize_wav(clean_text, wav_file, syn_config=syn_config)
         return buf.getvalue()
 
     async def synthesize_edge_mp3(self, text: str) -> bytes:
-        """Synthesizes using Microsoft Edge Neural en-GB-RyanNeural (~500ms)."""
+        """Synthesizes using Microsoft Edge Neural en-GB-RyanNeural at faster speed (+20%)."""
         import edge_tts
         clean_text = text.replace("*", "").replace("#", "").strip()
-        communicate = edge_tts.Communicate(clean_text, "en-GB-RyanNeural", pitch="-2Hz", rate="-4%")
+        communicate = edge_tts.Communicate(clean_text, "en-GB-RyanNeural", pitch="-1Hz", rate="+20%")
         buf = bytearray()
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
