@@ -1,0 +1,28 @@
+{
+  "assistant_name": "JARVIS",
+  "user_name": "Rishal",
+  "honorific": "sir",
+  "ollama": {
+    "host": "http://127.0.0.1:11434",
+    "model": "qwen2.5:3b",
+    "fallback_model": "llama3.2:3b",
+    "temperature": 0.3
+  },
+  "mqtt": {
+    "host": "140.245.207.229",
+    "port": 1883,
+    "ws_url": "ws://idock.rishal.studio/mqtt",
+    "client_id": "jarvis_ai_core"
+  },
+  "voice": {
+    "wake_words": ["jarvis", "hey jarvis", "ok jarvis"],
+    "accent": "en-GB",
+    "rate": 1.0,
+    "pitch": 0.95,
+    "chime_enabled": true
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8000
+  }
+}

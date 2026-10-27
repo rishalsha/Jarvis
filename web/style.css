@@ -1,0 +1,510 @@
+/* =============================================================
+   J.A.R.V.I.S. HUD // STARK INDUSTRIES HOLOGRAPHIC THEME
+   ============================================================= */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body, html {
+  width: 100%;
+  height: 100%;
+  background-color: #03070d;
+  color: #00f3ff;
+  font-family: 'Rajdhani', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Background Holographic Grid & Vignette */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: 
+    radial-gradient(circle at 50% 45%, rgba(0, 243, 255, 0.08) 0%, rgba(3, 7, 13, 0.95) 75%),
+    linear-gradient(rgba(0, 243, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 243, 255, 0.03) 1px, transparent 1px);
+  background-size: 100% 100%, 40px 40px, 40px 40px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Scanline Effect */
+body::after {
+  content: "";
+  position: fixed;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.15),
+    rgba(0, 0, 0, 0.15) 1px,
+    transparent 1px,
+    transparent 2px
+  );
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.6;
+}
+
+.jarvis-hud-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 18px 24px;
+  z-index: 10;
+}
+
+/* -------------------------------------------------------------
+   TOP HEADER HUD
+   ------------------------------------------------------------- */
+.hud-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(0, 243, 255, 0.2);
+  padding-bottom: 12px;
+  position: relative;
+}
+
+.hud-header::after {
+  content: "";
+  position: absolute;
+  bottom: -1px; left: 25%; width: 50%; height: 2px;
+  background: linear-gradient(90deg, transparent, #00f3ff, transparent);
+  box-shadow: 0 0 10px #00f3ff;
+}
+
+.stark-badge {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 900;
+  letter-spacing: 0.25em;
+  color: #ffffff;
+  text-shadow: 0 0 12px rgba(0, 243, 255, 0.8);
+}
+
+.hud-subtitle {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: rgba(0, 243, 255, 0.65);
+  margin-top: 2px;
+}
+
+.hud-center {
+  text-align: center;
+}
+
+.hud-time {
+  font-family: 'Orbitron', monospace;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #00f3ff;
+  text-shadow: 0 0 15px rgba(0, 243, 255, 0.6);
+}
+
+.hud-date {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.hud-right {
+  display: flex;
+  gap: 10px;
+}
+
+.hud-chip {
+  display: inline-flex;
+  align-items: center;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.70rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 243, 255, 0.3);
+  background: rgba(0, 243, 255, 0.06);
+  color: #00f3ff;
+}
+
+.chip-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #00f3ff;
+  box-shadow: 0 0 8px #00f3ff;
+  margin-right: 8px;
+  animation: pulseCore 1.5s infinite ease-in-out;
+}
+
+.chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #30d158;
+  box-shadow: 0 0 8px #30d158;
+  margin-right: 8px;
+}
+
+/* -------------------------------------------------------------
+   MAIN HUD // HOLOGRAPHIC ARC REACTOR & VISUALIZER
+   ------------------------------------------------------------- */
+.hud-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  min-height: 0;
+}
+
+.hologram-wrap {
+  position: relative;
+  width: 380px;
+  height: 380px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+#jarvis-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  filter: drop-shadow(0 0 16px rgba(0, 243, 255, 0.45));
+}
+
+/* Interactive Center Core Button */
+.core-trigger-btn {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 243, 255, 0.5);
+  background: radial-gradient(circle, rgba(0, 243, 255, 0.25) 0%, rgba(3, 15, 28, 0.85) 75%);
+  box-shadow: 
+    0 0 25px rgba(0, 243, 255, 0.4),
+    inset 0 0 20px rgba(0, 243, 255, 0.3);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+  outline: none;
+}
+
+.core-trigger-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 
+    0 0 40px rgba(0, 243, 255, 0.7),
+    inset 0 0 30px rgba(0, 243, 255, 0.5);
+  border-color: #00f3ff;
+}
+
+.core-trigger-btn:active {
+  transform: scale(0.96);
+}
+
+.core-text {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: #ffffff;
+  letter-spacing: 0.15em;
+  text-shadow: 0 0 10px #00f3ff;
+}
+
+.core-sub {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: rgba(0, 243, 255, 0.7);
+  margin-top: 4px;
+}
+
+/* State: Listening (Green/Cyan intense pulse) */
+.core-trigger-btn.state-listening {
+  border-color: #00f3ff;
+  background: radial-gradient(circle, rgba(0, 243, 255, 0.45) 0%, rgba(0, 50, 70, 0.9) 75%);
+  box-shadow: 0 0 45px #00f3ff, inset 0 0 25px #00f3ff;
+  animation: coreHearing 1.2s infinite ease-in-out;
+}
+.core-trigger-btn.state-listening .core-sub {
+  color: #ffffff;
+  text-shadow: 0 0 8px #00f3ff;
+}
+
+/* State: Thinking (Golden amber rotate/pulse) */
+.core-trigger-btn.state-thinking {
+  border-color: #ffaa00;
+  background: radial-gradient(circle, rgba(255, 170, 0, 0.35) 0%, rgba(40, 25, 5, 0.9) 75%);
+  box-shadow: 0 0 40px rgba(255, 170, 0, 0.7), inset 0 0 25px rgba(255, 170, 0, 0.5);
+}
+.core-trigger-btn.state-thinking .core-text {
+  color: #fff2cc;
+  text-shadow: 0 0 10px #ffaa00;
+}
+.core-trigger-btn.state-thinking .core-sub {
+  color: #ffaa00;
+}
+
+/* State: Speaking (Deep resonant blue wave pulse) */
+.core-trigger-btn.state-speaking {
+  border-color: #00f3ff;
+  box-shadow: 0 0 50px rgba(0, 243, 255, 0.8), inset 0 0 35px rgba(0, 243, 255, 0.6);
+  animation: coreSpeak 0.8s infinite alternate ease-in-out;
+}
+
+/* -------------------------------------------------------------
+   FEEDBACK & TRANSCRIPT CONSOLE
+   ------------------------------------------------------------- */
+.audio-feedback-panel {
+  width: 100%;
+  max-width: 680px;
+  margin-bottom: 14px;
+}
+
+.hud-status-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  color: rgba(0, 243, 255, 0.85);
+}
+
+.status-marker {
+  font-size: 0.9rem;
+  margin-right: 8px;
+  color: #00f3ff;
+}
+
+.transcript-box {
+  background: rgba(0, 18, 30, 0.65);
+  border: 1px solid rgba(0, 243, 255, 0.25);
+  border-radius: 12px;
+  padding: 12px 18px;
+  backdrop-filter: blur(8px);
+  box-shadow: inset 0 0 15px rgba(0, 243, 255, 0.08);
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.hud-log-entry {
+  font-size: 1.05rem;
+  line-height: 1.45;
+  color: #ffffff;
+  letter-spacing: 0.03em;
+}
+
+.speaker-tag {
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 700;
+  color: #00f3ff;
+  margin-right: 8px;
+}
+
+.speech-content {
+  font-weight: 500;
+}
+
+/* -------------------------------------------------------------
+   QUICK COMMANDS HUD BAR
+   ------------------------------------------------------------- */
+.quick-commands-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  max-width: 760px;
+  margin-bottom: 14px;
+}
+
+.quick-btn {
+  background: rgba(0, 243, 255, 0.08);
+  border: 1px solid rgba(0, 243, 255, 0.25);
+  color: #ffffff;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.quick-btn:hover {
+  background: rgba(0, 243, 255, 0.22);
+  border-color: #00f3ff;
+  box-shadow: 0 0 12px rgba(0, 243, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.quick-btn:active {
+  transform: scale(0.95);
+}
+
+/* -------------------------------------------------------------
+   COMMAND BAR & MIC INPUT
+   ------------------------------------------------------------- */
+.command-bar-wrap {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  max-width: 680px;
+  background: rgba(0, 15, 25, 0.8);
+  border: 1px solid rgba(0, 243, 255, 0.35);
+  border-radius: 14px;
+  padding: 6px 10px;
+  box-shadow: 0 0 20px rgba(0, 243, 255, 0.15);
+}
+
+.command-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #ffffff;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  padding: 8px 12px;
+}
+
+.command-input::placeholder {
+  color: rgba(0, 243, 255, 0.35);
+  font-weight: 500;
+}
+
+.mic-toggle-btn {
+  background: rgba(0, 243, 255, 0.12);
+  border: 1px solid rgba(0, 243, 255, 0.3);
+  color: #00f3ff;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin-right: 8px;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.mic-toggle-btn:hover {
+  background: rgba(0, 243, 255, 0.25);
+  box-shadow: 0 0 12px #00f3ff;
+}
+
+.mic-toggle-btn.listening {
+  background: rgba(0, 243, 255, 0.35);
+  border-color: #00f3ff;
+  box-shadow: 0 0 16px #00f3ff;
+  animation: pulseCore 1s infinite ease-in-out;
+}
+
+.mic-svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+
+.send-btn {
+  background: linear-gradient(135deg, rgba(0, 243, 255, 0.4) 0%, rgba(0, 150, 255, 0.6) 100%);
+  border: 1px solid #00f3ff;
+  color: #ffffff;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  padding: 10px 18px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.send-btn:hover {
+  box-shadow: 0 0 15px rgba(0, 243, 255, 0.6);
+}
+
+.send-btn:active {
+  transform: scale(0.94);
+}
+
+/* -------------------------------------------------------------
+   FOOTER TELEMETRY
+   ------------------------------------------------------------- */
+.hud-footer {
+  border-top: 1px solid rgba(0, 243, 255, 0.15);
+  padding-top: 10px;
+  position: relative;
+}
+
+.footer-telemetry {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  color: rgba(0, 243, 255, 0.6);
+}
+
+.footer-telemetry strong {
+  color: #00f3ff;
+}
+
+/* -------------------------------------------------------------
+   ANIMATIONS
+   ------------------------------------------------------------- */
+@keyframes pulseCore {
+  0% { transform: scale(0.96); opacity: 0.7; }
+  50% { transform: scale(1.04); opacity: 1; }
+  100% { transform: scale(0.96); opacity: 0.7; }
+}
+
+@keyframes coreHearing {
+  0% { transform: scale(1.0); box-shadow: 0 0 25px #00f3ff; }
+  50% { transform: scale(1.06); box-shadow: 0 0 55px #00f3ff, inset 0 0 35px #00f3ff; }
+  100% { transform: scale(1.0); box-shadow: 0 0 25px #00f3ff; }
+}
+
+@keyframes coreSpeak {
+  0% { transform: scale(0.98); box-shadow: 0 0 30px #00f3ff; }
+  100% { transform: scale(1.08); box-shadow: 0 0 65px #00f3ff, inset 0 0 45px #00f3ff; }
+}
+
+/* Responsive Overrides */
+@media (max-width: 600px) {
+  .jarvis-hud-container { padding: 12px 14px; }
+  .hud-subtitle { display: none; }
+  .hologram-wrap { width: 300px; height: 300px; }
+  .core-trigger-btn { width: 110px; height: 110px; }
+  .core-text { font-size: 0.95rem; }
+  .footer-telemetry { font-size: 0.60rem; justify-content: center; }
+}

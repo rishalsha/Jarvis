@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>J.A.R.V.I.S. // Stark Industries</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="jarvis-hud-container">
+
+    <!-- Top Holographic Bar -->
+    <header class="hud-header">
+      <div class="hud-left">
+        <div class="stark-badge">STARK INDUSTRIES</div>
+        <div class="hud-subtitle">JUST A RATHER VERY INTELLIGENT SYSTEM</div>
+      </div>
+
+      <div class="hud-center">
+        <div class="hud-time" id="hud-time">12:00:00</div>
+        <div class="hud-date" id="hud-date">SYSTEM READY // SIR RISHAL</div>
+      </div>
+
+      <div class="hud-right">
+        <div class="hud-chip chip-online">
+          <span class="chip-pulse"></span>
+          <span id="chip-core-label">LOCAL NEURAL CORE</span>
+        </div>
+        <div class="hud-chip chip-iot" id="chip-iot">
+          <span class="chip-dot"></span>
+          <span id="chip-iot-label">iDOCK IOT LINK</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Holographic Reactor & Sound Visualizer -->
+    <main class="hud-main">
+      <div class="hologram-wrap" id="hologram-wrap">
+        <!-- Interactive Canvas for Holographic Rings, Arc Core, and Soundwaves -->
+        <canvas id="jarvis-canvas" width="600" height="600"></canvas>
+
+        <!-- Center Interactive Core Button -->
+        <button class="core-trigger-btn" id="core-trigger-btn" title="Click or say 'Jarvis' to talk">
+          <div class="core-center-glow"></div>
+          <div class="core-text" id="core-text">J.A.R.V.I.S.</div>
+          <div class="core-sub" id="core-sub">STANDBY</div>
+        </button>
+      </div>
+
+      <!-- Real-time Speech & Audio Waveform Banner -->
+      <div class="audio-feedback-panel">
+        <div class="hud-status-line">
+          <span class="status-marker" id="status-marker">●</span>
+          <span class="status-text" id="status-text">Awaiting Sir's invocation ("Jarvis")...</span>
+        </div>
+
+        <div class="transcript-box" id="transcript-box">
+          <div class="hud-log-entry ai-entry">
+            <span class="speaker-tag">J.A.R.V.I.S.:</span>
+            <span class="speech-content" id="live-speech">At your service, sir. All workshop systems and neural cores are operational.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Action Commands / Device Controls -->
+      <div class="quick-commands-bar">
+        <button class="quick-btn" onclick="sendQuickText('Turn on the fan')">🌀 Fan ON</button>
+        <button class="quick-btn" onclick="sendQuickText('Turn off the fan')">⏹ Fan OFF</button>
+        <button class="quick-btn" onclick="sendQuickText('Turn on the light')">💡 Light ON</button>
+        <button class="quick-btn" onclick="sendQuickText('Turn off the light')">🌑 Light OFF</button>
+        <button class="quick-btn" onclick="sendQuickText('Wake desktop pc')">⚡ Wake PC</button>
+        <button class="quick-btn" onclick="sendQuickText('Put PC to sleep')">💤 Sleep PC</button>
+        <button class="quick-btn" onclick="sendQuickText('Engage night mode')">🌙 Night Mode</button>
+      </div>
+
+      <!-- Manual Command Input Bar -->
+      <form class="command-bar-wrap" id="command-form" onsubmit="handleFormSubmit(event)">
+        <input type="text" id="command-input" class="command-input" placeholder="Type a command or speak: 'Jarvis, turn on the fan'..." autocomplete="off">
+        <button type="button" class="mic-toggle-btn" id="mic-toggle-btn" title="Toggle Microphone Listening">
+          <svg viewBox="0 0 24 24" class="mic-svg" id="mic-icon"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+        </button>
+        <button type="submit" class="send-btn">TRANSMIT</button>
+      </form>
+    </main>
+
+    <!-- Bottom Telemetry HUD Bar -->
+    <footer class="hud-footer">
+      <div class="footer-telemetry">
+        <span class="telem-item">NEURAL ENGINE: <strong id="telem-model">QWEN2.5 // LOCAL</strong></span>
+        <span class="telem-item">HARDWARE LATENCY: <strong id="telem-latency">12ms</strong></span>
+        <span class="telem-item">VOICE MODULATION: <strong>BRITISH JARVIS // RESONANT</strong></span>
+        <span class="telem-item">STARK PROTOCOL: <strong>CLEARED FOR SIR</strong></span>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Scripts -->
+  <script src="/static/visualizer.js"></script>
+  <script src="/static/voice.js"></script>
+</body>
+</html>
