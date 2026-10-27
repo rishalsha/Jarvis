@@ -226,9 +226,17 @@ class JarvisEngine:
         
         # Enforce strict address rule: call user ONLY "sir" or "Sir"
         t = re.sub(r'\bmy\s+boy\b', 'sir', t, flags=re.IGNORECASE)
+        t = re.sub(r'\bboy\b', 'sir', t, flags=re.IGNORECASE)
         t = re.sub(r'\bsir\s+rishal\b', 'sir', t, flags=re.IGNORECASE)
         t = re.sub(r'\brishal\b', 'sir', t, flags=re.IGNORECASE)
+        t = re.sub(r'\bmy\s+man\b', 'sir', t, flags=re.IGNORECASE)
         t = re.sub(r'\bbuddy\b', 'sir', t, flags=re.IGNORECASE)
+        t = re.sub(r'\bdude\b', 'sir', t, flags=re.IGNORECASE)
+        t = re.sub(r'\bpal\b', 'sir', t, flags=re.IGNORECASE)
+        t = re.sub(r'\bchap\b', 'sir', t, flags=re.IGNORECASE)
+
+        # Clean redundant repetitions like "Sir, sir"
+        t = re.sub(r'\b(sir[,\s]+)+sir\b', 'sir', t, flags=re.IGNORECASE)
 
         # Capitalize leading Sir if sentence begins with it
         t = re.sub(r'^\s*sir\b', 'Sir', t)

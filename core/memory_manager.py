@@ -287,7 +287,13 @@ class MemoryManager:
                 ORDER BY id DESC LIMIT ?
             """, (limit,))
             rows = cur.fetchall()
-            return [{"role": r[0], "content": r[1]} for r in reversed(rows)]
+            
+            def sanitize(text: str) -> str:
+                t = re.sub(r'\bmy\s+boy\b', 'sir', text, flags=re.IGNORECASE)
+                t = re.sub(r'\bsir\s+rishal\b', 'sir', t, flags=re.IGNORECASE)
+                return t
+
+            return [{"role": r[0], "content": sanitize(r[1]) if r[0] == "assistant" else r[1]} for r in reversed(rows)]
 
     def log_action(self, action_type: str, details: str):
         now = time.time()
