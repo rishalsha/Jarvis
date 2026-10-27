@@ -10,9 +10,14 @@ class JarvisVoiceManager {
     this.recognition = null;
     this.isListening = true;
     this.isSpeaking = false;
+    this.isRecognitionActive = false;
     this.restartTimer = null;
     this.audioCtx = null;
     this.britishVoice = null;
+    this.interimDebounceTimer = null;
+    this.lastInterimTranscript = '';
+    this.lastProcessedText = '';
+    this.lastProcessedTime = 0;
 
     // Wake words regex (Jarvis, my boy, hey my boy, Ultron, buddy, etc.)
     this.wakeWordRegex = /\b(jarvis|hey jarvis|hello jarvis|hi jarvis|ok jarvis|yo jarvis|wake up jarvis|my boy|hey my boy|hey boy|hi boy|hello my boy|boy|buddy|hey buddy|my man|ultron|computer|assistant)\b/i;
@@ -273,10 +278,14 @@ class JarvisVoiceManager {
     this.recognition.lang = 'en-US';
 
     this.recognition.onstart = () => {
+      this.isRecognitionActive = true;
       const micBtn = document.getElementById('mic-toggle-btn');
       if (micBtn) micBtn.classList.add('listening');
       const tag = document.getElementById('hearing-live-tag');
-      if (tag) tag.innerText = 'LISTENING';
+      if (tag) {
+        tag.innerText = 'LISTENING';
+        tag.style.color = '#00f3ff';
+      }
     };
 
     this.recognition.onresult = (event) => {
@@ -294,13 +303,28 @@ class JarvisVoiceManager {
         }
       }
 
-      // Stream live real-time words to caption HUD while Sir is speaking
+      // Stream live real-time words to caption HUD
       if (interimTranscript) {
         this.updateHearingCaption(interimTranscript, false);
+        this.lastInterimTranscript = interimTranscript.trim();
+
+        // FAST-COMMIT: Don't wait 2 seconds for Chrome's sluggish cloud finalizer!
+        // As soon as Sir pauses for 450ms, commit the phrase immediately!
+        if (this.interimDebounceTimer) clearTimeout(this.interimDebounceTimer);
+        this.interimDebounceTimer = setTimeout(() => {
+          if (this.lastInterimTranscript && !this.isSpeaking) {
+            const textToProcess = this.lastInterimTranscript;
+            this.lastInterimTranscript = '';
+            this.updateHearingCaption(textToProcess, true);
+            this.handleCapturedSpeech(textToProcess);
+          }
+        }, 450);
       }
 
-      // When the phrase is finalized
+      // When the browser finalizes the phrase
       if (finalTranscript.trim()) {
+        if (this.interimDebounceTimer) clearTimeout(this.interimDebounceTimer);
+        this.lastInterimTranscript = '';
         const clean = finalTranscript.trim();
         this.updateHearingCaption(clean, true);
         this.handleCapturedSpeech(clean);
@@ -311,13 +335,29 @@ class JarvisVoiceManager {
       if (e.error !== 'no-speech') {
         console.warn('Speech Recognition notice:', e.error);
       }
+      if (e.error === 'network') {
+        this.scheduleRecognitionRestart(300);
+      }
     };
 
     this.recognition.onend = () => {
+      this.isRecognitionActive = false;
+      const tag = document.getElementById('hearing-live-tag');
+      if (tag && !this.isSpeaking) {
+        tag.innerText = 'RECONNECTING';
+        tag.style.color = 'rgba(0, 243, 255, 0.5)';
+      }
       if (!this.isSpeaking) {
-        this.scheduleRecognitionRestart(150);
+        this.scheduleRecognitionRestart(50);
       }
     };
+
+    // Watchdog heartbeat: auto-revive recognition if Chrome drops it
+    setInterval(() => {
+      if (!this.isSpeaking && !this.isRecognitionActive) {
+        this.startContinuousListening();
+      }
+    }, 2000);
 
     // Auto-boot on first user gesture
     const startMic = () => {
@@ -331,9 +371,21 @@ class JarvisVoiceManager {
   }
 
   handleCapturedSpeech(transcript) {
-    const lower = transcript.toLowerCase();
-    console.log('[*] Final Speech Captured:', transcript);
+    if (!transcript) return;
+    const clean = transcript.trim();
+    if (!clean) return;
 
+    // Deduplication guard: ignore duplicate triggers within 2.0s
+    const now = Date.now();
+    if (this.lastProcessedText.toLowerCase() === clean.toLowerCase() && (now - this.lastProcessedTime) < 2000) {
+      return;
+    }
+    this.lastProcessedText = clean;
+    this.lastProcessedTime = now;
+
+    console.log('[*] Fast Speech Captured:', clean);
+
+    const lower = clean.toLowerCase();
     const match = lower.match(this.wakeWordRegex);
 
     if (match) {
@@ -341,7 +393,7 @@ class JarvisVoiceManager {
       this.setUIState('listening');
 
       const matchedPhrase = match[0];
-      let remainingCommand = transcript.substring(match.index + matchedPhrase.length).replace(/^[,.\s]+/, '').trim();
+      let remainingCommand = clean.substring(match.index + matchedPhrase.length).replace(/^[,.\s]+/, '').trim();
 
       if (remainingCommand.length > 1) {
         this.sendUserSpeech(remainingCommand);
@@ -350,7 +402,7 @@ class JarvisVoiceManager {
         this.speakAsJarvis("At your service, sir. I am listening.");
       }
     } else {
-      this.sendUserSpeech(transcript);
+      this.sendUserSpeech(clean);
     }
   }
 
@@ -461,11 +513,13 @@ class JarvisVoiceManager {
   }
 
   startContinuousListening() {
-    if (!this.recognition || this.isSpeaking) return;
+    if (!this.recognition || this.isSpeaking || this.isRecognitionActive) return;
     try {
       this.recognition.start();
     } catch (e) {
-      // Recognition already running
+      if (e.name !== 'InvalidStateError') {
+        console.warn('Recognition start notice:', e.message);
+      }
     }
   }
 
