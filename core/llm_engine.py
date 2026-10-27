@@ -95,8 +95,8 @@ class JarvisEngine:
                     self.memory.log_action("scene_trigger", scn)
                     tools_executed.append({"tool": "trigger_scene", "args": item, "result": res})
 
-        # 3. Formulate J.A.R.V.I.S. Dynamic Response
-        memory_context = self.memory.build_memory_context()
+        # 3. Formulate J.A.R.V.I.S. Dynamic Response with Real-Time RAG Recall
+        memory_context = self.memory.build_memory_context(current_query=clean_text)
         sys_prompt = SYSTEM_PROMPT.format(
             memory_context=memory_context,
             current_time=current_time,
