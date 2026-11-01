@@ -217,7 +217,7 @@ body::after {
   align-items: center;
   justify-content: center;
   z-index: 20;
-  transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition: transform 0.06s ease-out, box-shadow 0.06s ease-out, border-color 0.2s ease;
   outline: none;
 }
 
@@ -250,12 +250,12 @@ body::after {
   margin-top: 4px;
 }
 
-/* State: Listening (Green/Cyan intense pulse) */
+/* State: Listening (Green/Cyan mic audio-reactive) */
 .core-trigger-btn.state-listening {
   border-color: #00f3ff;
   background: radial-gradient(circle, rgba(0, 243, 255, 0.45) 0%, rgba(0, 50, 70, 0.9) 75%);
-  box-shadow: 0 0 45px #00f3ff, inset 0 0 25px #00f3ff;
-  animation: coreHearing 1.2s infinite ease-in-out;
+  box-shadow: 0 0 35px #00f3ff, inset 0 0 20px #00f3ff;
+  /* Driven dynamically by live microphone AudioContext visualizer */
 }
 .core-trigger-btn.state-listening .core-sub {
   color: #ffffff;

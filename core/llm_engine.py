@@ -1,6 +1,7 @@
 """
 Local LLM Inference Engine for J.A.R.V.I.S.
-Integrates Dynamic Persona Synthesis, Semantic Intent Parsing, Ollama local model, and persistent memory.
+Integrates Multi-Step ReAct Agent Loop, Dynamic Persona Synthesis, System Agency,
+Semantic Intent Parsing, Ollama local model, and persistent memory.
 """
 
 import json
@@ -15,6 +16,7 @@ from core.jarvis_persona import SYSTEM_PROMPT, TOOLS_SCHEMA
 from core.memory_manager import MemoryManager
 from core.idock_tools import IDockController
 from core.semantic_parser import SemanticIntentParser
+from core.system_tools import SystemTools
 
 logger = logging.getLogger("Jarvis.LLM")
 
@@ -49,8 +51,11 @@ class JarvisEngine:
 
     def process_user_input(self, user_message: str) -> Dict[str, Any]:
         """
-        Processes Sir's command with semantic intent interpretation,
-        executes hardware actions, updates persistent memory, and synthesizes dynamic reply.
+        Processes Sir's command using an autonomous multi-step ReAct agent loop:
+        1. Fast-path semantic intent handling for instant hardware control.
+        2. RAG memory retrieval & temporal prompt formation.
+        3. Multi-turn Tool calling cycle (read telemetry, read/write files, shell commands, IoT).
+        4. Synthesizes concise British gentleman voice response.
         """
         clean_text = user_message.strip()
         self.memory.add_message("user", clean_text)
@@ -102,11 +107,11 @@ class JarvisEngine:
         )
 
         recent_history = self.memory.get_recent_history(limit=6)
-        messages = [{"role": "system", "content": sys_prompt}]
+        messages: List[Dict[str, Any]] = [{"role": "system", "content": sys_prompt}]
         for msg in recent_history:
             messages.append({"role": msg["role"], "content": msg["content"]})
 
-        # Detect bare wake calls / greetings (e.g. "Jarvis", "My boy", "Hey my boy")
+        # Detect bare wake calls / greetings
         is_wake_call = clean_text.lower().strip("!?,. ") in [
             "jarvis", "hey jarvis", "hello jarvis", "hi jarvis", "my boy", "hey my boy",
             "hey boy", "hi boy", "hello my boy", "boy", "buddy", "hey buddy", "ultron",
@@ -122,7 +127,7 @@ class JarvisEngine:
                 "role": "user",
                 "content": f"[SYSTEM INSTRUCTION: You have already physically executed: '{action_summary}'. Give a direct, proper 1-sentence confirmation to Sir and stop. Do NOT add small talk, commentary about the night, rhetorical questions, or extra filler. Address Sir ONLY as 'sir'. Example: 'The room light is on, sir.']"
             })
-            use_tools_schema = False  # Avoid redundant tool calls; encourage free, natural speech
+            use_tools_schema = False
 
         elif is_wake_call:
             messages.append({
@@ -131,30 +136,52 @@ class JarvisEngine:
             })
             use_tools_schema = False
 
-        # Call local LLM
-        response_payload = self._call_ollama(messages, tools=TOOLS_SCHEMA if use_tools_schema else None)
-
+        # 4. Multi-Turn ReAct Agent Execution Loop
+        max_turns = 4
+        turn = 0
         content = ""
-        if response_payload:
+
+        while turn < max_turns:
+            turn += 1
+            response_payload = self._call_ollama(messages, tools=TOOLS_SCHEMA if use_tools_schema else None)
+            if not response_payload:
+                break
+
             message = response_payload.get("message", {})
-            content = message.get("content", "").strip()
-
-            # Process any tool calls returned by LLM if semantic parser didn't catch them
             tool_calls = message.get("tool_calls", [])
-            if tool_calls:
-                for tc in tool_calls:
-                    fn = tc.get("function", {})
-                    fn_name = fn.get("name")
-                    fn_args = fn.get("arguments", {})
-                    if isinstance(fn_args, str):
-                        try:
-                            fn_args = json.loads(fn_args)
-                        except Exception:
-                            pass
-                    res = self._execute_tool(fn_name, fn_args)
-                    tools_executed.append({"tool": fn_name, "args": fn_args, "result": res})
 
-        # Dynamic fallback if LLM was empty
+            if not tool_calls:
+                # Agent reached a direct verbal conclusion
+                content = message.get("content", "").strip()
+                break
+
+            # The agent decided to invoke one or more tools
+            messages.append(message)
+            for tc in tool_calls:
+                fn = tc.get("function", {})
+                fn_name = fn.get("name")
+                fn_args = fn.get("arguments", {})
+                if isinstance(fn_args, str):
+                    try:
+                        fn_args = json.loads(fn_args)
+                    except Exception:
+                        pass
+
+                logger.info(f"Agent Loop [Turn {turn}]: Calling '{fn_name}' with args {fn_args}")
+                tool_result = self._execute_tool(fn_name, fn_args)
+                tools_executed.append({"tool": fn_name, "args": fn_args, "result": tool_result})
+
+                # Build tool observation message for Ollama
+                tool_msg: Dict[str, Any] = {
+                    "role": "tool",
+                    "name": fn_name,
+                    "content": json.dumps(tool_result) if isinstance(tool_result, (dict, list)) else str(tool_result)
+                }
+                if "id" in tc:
+                    tool_msg["tool_call_id"] = tc["id"]
+                messages.append(tool_msg)
+
+        # Dynamic fallback if LLM response was empty
         if not content:
             if tools_executed:
                 content = random.choice(FALLBACK_ACTIONS)
@@ -169,10 +196,10 @@ class JarvisEngine:
             "tools_executed": tools_executed
         }
 
-    def _call_ollama(self, messages: List[Dict[str, str]], tools: Optional[List[Dict]] = None) -> Dict[str, Any]:
+    def _call_ollama(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict]] = None) -> Dict[str, Any]:
         """Performs HTTP request to Ollama /api/chat with dynamic temperature."""
         url = f"{self.ollama_host}/api/chat"
-        payload = {
+        payload: Dict[str, Any] = {
             "model": self.model,
             "messages": messages,
             "stream": False,
@@ -198,35 +225,75 @@ class JarvisEngine:
 
     def _execute_tool(self, name: str, args: Dict[str, Any]) -> Dict[str, Any]:
         logger.info(f"Executing tool: {name} with args {args}")
-        if name == "control_device":
-            dev = args.get("device_name", "")
-            state = args.get("state", "ON")
-            return self.idock.control_device(dev, state)
-        elif name == "control_computer":
-            comp = args.get("computer_name", "pc")
-            action = args.get("action", "wake")
-            return self.idock.control_computer(comp, action)
-        elif name == "trigger_scene":
-            scene = args.get("scene_name", "all_on")
-            return self.idock.trigger_scene(scene)
-        elif name == "remember_fact":
-            key = args.get("key", "fact")
-            val = args.get("value", "")
-            return self.memory.store_fact(key, val)
+        try:
+            # System Agency Tools
+            if name == "get_system_telemetry":
+                return SystemTools.get_system_telemetry()
+            elif name == "read_file":
+                path = args.get("path", "")
+                start_line = args.get("start_line", 1)
+                max_lines = args.get("max_lines", 100)
+                return SystemTools.read_file(path, start_line=start_line, max_lines=max_lines)
+            elif name == "write_file":
+                path = args.get("path", "")
+                content = args.get("content", "")
+                overwrite = args.get("overwrite", True)
+                res = SystemTools.write_file(path, content, overwrite=overwrite)
+                self.memory.log_action("file_write", path)
+                return res
+            elif name == "list_directory":
+                path = args.get("path", ".")
+                return SystemTools.list_directory(path)
+            elif name == "execute_bash":
+                cmd = args.get("command", "")
+                res = SystemTools.execute_bash(cmd)
+                self.memory.log_action("shell_execution", cmd)
+                return res
+            elif name == "manage_application":
+                action = args.get("action", "launch")
+                app_name = args.get("app_name", "")
+                res = SystemTools.manage_application(action, app_name)
+                self.memory.log_action("app_management", f"{action} {app_name}")
+                return res
+            elif name == "control_system_audio":
+                action = args.get("action", "volume_up")
+                val = args.get("value")
+                return SystemTools.control_system_audio(action, val)
+
+            # IoT & Relays
+            elif name == "control_device":
+                dev = args.get("device_name", "")
+                state = args.get("state", "ON")
+                return self.idock.control_device(dev, state)
+            elif name == "control_computer":
+                comp = args.get("computer_name", "pc")
+                action = args.get("action", "wake")
+                return self.idock.control_computer(comp, action)
+            elif name == "trigger_scene":
+                scene = args.get("scene_name", "all_on")
+                return self.idock.trigger_scene(scene)
+            elif name == "remember_fact":
+                key = args.get("key", "fact")
+                val = args.get("value", "")
+                return self.memory.store_fact(key, val)
+        except Exception as e:
+            logger.error(f"Error executing tool {name}: {e}")
+            return {"status": "error", "message": str(e)}
+
         return {"status": "error", "message": f"Unknown tool {name}"}
 
     def _clean_speech_text(self, text: str) -> str:
-        """Removes markdown artifacts and enforces strict 'sir' address rule."""
+        """Removes markdown artifacts, code blocks, and enforces strict 'sir' address rule."""
         import re
         t = re.sub(r'```[\s\S]*?```', '', text)
         t = re.sub(r'[*_#`]', '', t)
         t = re.sub(r'\[.*?\]', '', t)
         
-        # Enforce strict address rule: call user ONLY "sir" or "Sir"
+        # Enforce strict address rule: call user vocatively ONLY "sir" or "Sir"
         t = re.sub(r'\bmy\s+boy\b', 'sir', t, flags=re.IGNORECASE)
         t = re.sub(r'\bboy\b', 'sir', t, flags=re.IGNORECASE)
         t = re.sub(r'\bsir\s+rishal\b', 'sir', t, flags=re.IGNORECASE)
-        t = re.sub(r'\brishal\b', 'sir', t, flags=re.IGNORECASE)
+        t = re.sub(r'\b(hello|hi|hey|good\s+morning|good\s+evening|good\s+afternoon),\s*rishal\b', r'\1, sir', t, flags=re.IGNORECASE)
         t = re.sub(r'\bmy\s+man\b', 'sir', t, flags=re.IGNORECASE)
         t = re.sub(r'\bbuddy\b', 'sir', t, flags=re.IGNORECASE)
         t = re.sub(r'\bdude\b', 'sir', t, flags=re.IGNORECASE)

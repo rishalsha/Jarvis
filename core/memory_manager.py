@@ -118,11 +118,11 @@ class MemoryManager:
 
     def _ensure_default_profile(self):
         defaults = {
-            "user_name": "Sir",
+            "user_name": "Rishal",
             "user_title": "Sir",
-            "assistant_identity": "J.A.R.V.I.S., the personal AI assistant created by and directly serving Sir.",
+            "assistant_identity": "JARVIS, the personal AI assistant created by Rishal and directly serving Sir.",
             "preferred_tone": "Respectful, polite, articulate, witty, concise gentleman.",
-            "creator": "Sir",
+            "creator": "Rishal",
             "workshop_location": "Personal Workshop"
         }
         for k, v in defaults.items():
@@ -264,7 +264,7 @@ class MemoryManager:
                         # Skip if exact same query as current input
                         if content.strip().lower() == clean.lower():
                             continue
-                        speaker = "Sir" if role == "user" else "J.A.R.V.I.S."
+                        speaker = "Sir" if role == "user" else "JARVIS"
                         summary = f"{speaker} stated: '{content}'"
                         if summary not in seen_contents:
                             seen_contents.add(summary)

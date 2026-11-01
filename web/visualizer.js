@@ -65,7 +65,6 @@ class NeuralSynapseVisualizer {
   }
 
   burstPulses(x, y) {
-    // Spawns electrical synaptic bursts outward from touch/click point
     for (let node of this.nodes) {
       const dx = node.x - x;
       const dy = node.y - y;
@@ -78,8 +77,7 @@ class NeuralSynapseVisualizer {
 
   setAudioEnergy(energy) {
     this.audioEnergy = energy;
-    if (energy > 0.35 && Math.random() < 0.25) {
-      // Spawn random action potential along an active link
+    if (energy > 0.20 && Math.random() < 0.40) {
       const idx1 = Math.floor(Math.random() * this.nodes.length);
       const n1 = this.nodes[idx1];
       for (let j = 0; j < this.nodes.length; j++) {
@@ -92,7 +90,7 @@ class NeuralSynapseVisualizer {
             x1: n1.x, y1: n1.y,
             x2: n2.x, y2: n2.y,
             progress: 0,
-            speed: 0.035 + (energy * 0.04),
+            speed: 0.035 + (energy * 0.07),
             color: n1.isGolden ? '#ffaa00' : '#00f3ff'
           });
           break;
@@ -103,49 +101,35 @@ class NeuralSynapseVisualizer {
 
   animate() {
     this.ctx.clearRect(0, 0, this.width, this.height);
+    const boost = Math.min(1.0, this.audioEnergy * 2.2);
 
-    const boost = this.audioEnergy; // 0.0 to 1.0 live audio boost
-
-    // 1. Update and draw nodes
+    // 1. Update Positions
     for (let node of this.nodes) {
-      node.x += node.vx * (1 + boost * 0.8);
-      node.y += node.vy * (1 + boost * 0.8);
+      const speedMult = 1.0 + (boost * 1.6);
+      node.x += node.vx * speedMult;
+      node.y += node.vy * speedMult;
 
-      // Bounce off screen boundaries with padding
-      if (node.x < 10) { node.x = 10; node.vx *= -1; }
-      if (node.x > this.width - 10) { node.x = this.width - 10; node.vx *= -1; }
-      if (node.y < 10) { node.y = 10; node.vy *= -1; }
-      if (node.y > this.height - 10) { node.y = this.height - 10; node.vy *= -1; }
+      if (node.x < 0) node.x = this.width;
+      if (node.x > this.width) node.x = 0;
+      if (node.y < 0) node.y = this.height;
+      if (node.y > this.height) node.y = 0;
 
-      // Decay glow
-      if (node.glowEnergy > 0) node.glowEnergy -= 0.02;
-
-      // Pointer proximity pull
-      if (this.pointer.active) {
-        const pdx = this.pointer.x - node.x;
-        const pdy = this.pointer.y - node.y;
-        const pdist = Math.sqrt(pdx * pdx + pdy * pdy);
-        if (pdist < 180 && pdist > 5) {
-          node.x += (pdx / pdist) * 0.45;
-          node.y += (pdy / pdist) * 0.45;
-        }
+      if (node.glowEnergy > 0) {
+        node.glowEnergy *= 0.94;
       }
     }
 
-    // 2. Draw Synaptic Link Connectors (Axons)
-    const len = this.nodes.length;
-    for (let i = 0; i < len; i++) {
+    // 2. Draw Synaptic Links
+    for (let i = 0; i < this.nodes.length; i++) {
       const n1 = this.nodes[i];
-      for (let j = i + 1; j < len; j++) {
+      for (let j = i + 1; j < this.nodes.length; j++) {
         const n2 = this.nodes[j];
         const dx = n2.x - n1.x;
         const dy = n2.y - n1.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
         if (dist < this.maxLinkDist) {
-          const proximityAlpha = (1 - (dist / this.maxLinkDist));
-          const alpha = Math.min(0.85, proximityAlpha * (0.28 + (boost * 0.55)));
-          
+          const alpha = (1 - (dist / this.maxLinkDist)) * (0.28 + (boost * 0.45));
           this.ctx.beginPath();
           this.ctx.moveTo(n1.x, n1.y);
           this.ctx.lineTo(n2.x, n2.y);
@@ -178,7 +162,7 @@ class NeuralSynapseVisualizer {
       }
     }
 
-    // 3. Draw Action Potential Pulses (Traveling Neural Signals)
+    // 3. Draw Action Potential Pulses
     for (let pIdx = this.pulses.length - 1; pIdx >= 0; pIdx--) {
       const p = this.pulses[pIdx];
       p.progress += p.speed;
@@ -227,17 +211,39 @@ class JarvisVisualizer {
   constructor(canvasId) {
     this.canvas = document.getElementById(canvasId);
     this.ctx = this.canvas.getContext('2d');
+    this.coreBtn = document.getElementById('core-trigger-btn');
+    this.coreSub = document.getElementById('core-sub');
     this.state = 'listening'; // 'listening', 'thinking', 'speaking', 'muted'
     this.rotation = 0;
     this.rotationSpeed = 0.015;
     this.pulse = 0;
-    this.audioData = new Uint8Array(64);
+
+    // Web Audio Analyzer state
     this.analyser = null;
     this.audioContext = null;
     this.micStream = null;
+    this.gainNode = null;
+    this.frequencyData = new Uint8Array(128);
+    this.timeDomainData = new Uint8Array(256);
+    this.smoothedEnergy = 0;
 
     this.initCanvasSize();
     window.addEventListener('resize', () => this.initCanvasSize());
+
+    // Auto-setup interaction hooks to unlock Web Audio API immediately
+    const unlockUserAudio = () => {
+      this.initMicAudio();
+      if (this.audioContext && this.audioContext.state === 'suspended') {
+        this.audioContext.resume();
+      }
+    };
+    window.addEventListener('pointerdown', unlockUserAudio);
+    window.addEventListener('click', unlockUserAudio);
+    window.addEventListener('keydown', unlockUserAudio);
+
+    // Initial direct attempt
+    this.initMicAudio();
+
     this.animate = this.animate.bind(this);
     requestAnimationFrame(this.animate);
   }
@@ -270,17 +276,47 @@ class JarvisVisualizer {
   }
 
   async initMicAudio() {
-    if (this.analyser) return;
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      this.audioContext = new AudioCtx();
-      this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      const source = this.audioContext.createMediaStreamSource(this.micStream);
-      this.analyser = this.audioContext.createAnalyser();
-      this.analyser.fftSize = 128;
-      this.analyser.smoothingTimeConstant = 0.8;
-      source.connect(this.analyser);
-      this.audioData = new Uint8Array(this.analyser.frequencyBinCount);
+      if (!this.audioContext) {
+        this.audioContext = new AudioCtx();
+        window.jarvisAudioContext = this.audioContext;
+      }
+
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
+
+      if (!this.micStream && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        this.micStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: false,
+            autoGainControl: true,
+            noiseSuppression: false
+          },
+          video: false
+        });
+      }
+
+      if (this.micStream && !this.analyser) {
+        const source = this.audioContext.createMediaStreamSource(this.micStream);
+
+        // 4.5x Pre-Gain Hardware Amplifier for high-sensitivity visual response
+        this.gainNode = this.audioContext.createGain();
+        this.gainNode.gain.setValueAtTime(4.5, this.audioContext.currentTime);
+
+        this.analyser = this.audioContext.createAnalyser();
+        this.analyser.fftSize = 256;
+        this.analyser.smoothingTimeConstant = 0.40; // High responsiveness to spoken words
+
+        source.connect(this.gainNode);
+        this.gainNode.connect(this.analyser);
+        // Do not connect to destination (no speaker loopback)
+
+        this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount);
+        this.timeDomainData = new Uint8Array(this.analyser.fftSize);
+        console.log('[Visualizer] Microphone live frequency analyzer connected with 4.5x visual gain.');
+      }
     } catch (e) {
       console.warn('Microphone audio context initialisation deferred:', e);
     }
@@ -288,31 +324,63 @@ class JarvisVisualizer {
 
   animate() {
     this.ctx.clearRect(0, 0, this.width, this.height);
-    this.rotation += this.rotationSpeed;
     this.pulse += 0.05;
 
-    // Grab live audio levels
-    let avgAudio = 0;
+    // 1. Compute Live Audio Metrics
+    let rawAudioEnergy = 0;
     if (this.analyser && this.state !== 'muted') {
-      this.analyser.getByteFrequencyData(this.audioData);
-      let sum = 0;
-      for (let i = 0; i < this.audioData.length; i++) {
-        sum += this.audioData[i];
+      if (this.audioContext && this.audioContext.state === 'suspended') {
+        // Will unlock on interaction
+      } else {
+        this.analyser.getByteFrequencyData(this.frequencyData);
+        this.analyser.getByteTimeDomainData(this.timeDomainData);
+
+        // Frequency energy across vocal bins (1 to 70)
+        let sum = 0;
+        let peak = 0;
+        const binCount = Math.min(70, this.frequencyData.length);
+        for (let i = 1; i < binCount; i++) {
+          const v = this.frequencyData[i];
+          sum += v;
+          if (v > peak) peak = v;
+        }
+        const freqAvg = (sum / (binCount - 1)) / 140;
+
+        // Waveform RMS energy (time-domain displacement)
+        let waveSum = 0;
+        for (let i = 0; i < this.timeDomainData.length; i++) {
+          const sample = (this.timeDomainData[i] - 128) / 128;
+          waveSum += sample * sample;
+        }
+        const waveRms = Math.sqrt(waveSum / this.timeDomainData.length) * 2.2;
+
+        rawAudioEnergy = Math.max(freqAvg, waveRms);
       }
-      avgAudio = sum / this.audioData.length / 255;
     } else if (this.state === 'speaking') {
-      // Simulate speech harmonics if synthetic TTS is playing
-      avgAudio = 0.35 + Math.sin(this.pulse * 3) * 0.25 + Math.cos(this.pulse * 5) * 0.15;
+      rawAudioEnergy = 0.35 + Math.sin(this.pulse * 3) * 0.22 + Math.cos(this.pulse * 5) * 0.15;
     }
+
+    // Fast Attack, Smooth Release dynamics
+    if (rawAudioEnergy > this.smoothedEnergy) {
+      this.smoothedEnergy = (this.smoothedEnergy * 0.3) + (rawAudioEnergy * 0.7); // Rapid attack
+    } else {
+      this.smoothedEnergy = (this.smoothedEnergy * 0.82) + (rawAudioEnergy * 0.18); // Smooth release
+    }
+
+    const micBoost = Math.min(1.0, this.smoothedEnergy * 2.5);
+
+    // Increase ring rotation speed dynamically when speaking
+    const dynamicRotationSpeed = this.rotationSpeed + (micBoost * 0.045);
+    this.rotation += dynamicRotationSpeed;
 
     // Feed live audio energy to background Neural Synapse Network
     if (window.neuralVisualizer) {
-      window.neuralVisualizer.setAudioEnergy(avgAudio);
+      window.neuralVisualizer.setAudioEnergy(micBoost);
     }
 
     const cx = this.centerX;
     const cy = this.centerY;
-    const baseRadius = 85 + (avgAudio * 25);
+    const baseRadius = 85 + (micBoost * 22);
 
     // Color palette based on state
     let strokeColor = 'rgba(0, 243, 255, 0.5)';
@@ -328,37 +396,74 @@ class JarvisVisualizer {
       glowColor = '#ff3b30';
     }
 
-    // 1. Ambient Holographic Halo
-    const grad = this.ctx.createRadialGradient(cx, cy, 30, cx, cy, baseRadius + 50);
+    // =========================================================================
+    // 2. DYNAMIC LIVE ULTRON BUTTON PHYSICAL REACTION (DOM Sync)
+    // =========================================================================
+    if (this.coreBtn) {
+      if (this.state === 'muted') {
+        this.coreBtn.style.transform = 'scale(1.0)';
+        this.coreBtn.style.boxShadow = '0 0 25px rgba(255, 59, 48, 0.4), inset 0 0 15px rgba(255, 59, 48, 0.3)';
+        this.coreBtn.style.borderColor = '#ff3b30';
+      } else {
+        // High visibility dynamic scaling: from 1.00 up to 1.25
+        const scaleVal = 1.0 + (micBoost * 0.25);
+        const glowSpread = 30 + Math.round(micBoost * 85);
+        const insetSpread = 18 + Math.round(micBoost * 45);
+
+        this.coreBtn.style.transform = `scale(${scaleVal.toFixed(3)})`;
+        this.coreBtn.style.boxShadow = `0 0 ${glowSpread}px ${glowColor}, inset 0 0 ${insetSpread}px ${glowColor}`;
+        this.coreBtn.style.borderColor = glowColor;
+
+        if (this.coreSub && this.state === 'listening') {
+          if (micBoost > 0.08) {
+            this.coreSub.innerText = 'HEARING SIR';
+            this.coreSub.style.color = '#30d158';
+            this.coreSub.style.textShadow = '0 0 12px #30d158';
+          } else {
+            this.coreSub.innerText = 'MIC ACTIVE';
+            this.coreSub.style.color = 'rgba(0, 243, 255, 0.85)';
+            this.coreSub.style.textShadow = '0 0 6px #00f3ff';
+          }
+        }
+      }
+    }
+
+    // =========================================================================
+    // 3. CANVAS HOLOGRAPHIC VISUALIZER RINGS
+    // =========================================================================
+    // A. Ambient Holographic Halo
+    const grad = this.ctx.createRadialGradient(cx, cy, 30, cx, cy, baseRadius + 60);
     grad.addColorStop(0, 'rgba(0, 243, 255, 0.0)');
     if (this.state === 'muted') {
       grad.addColorStop(0.7, 'rgba(255, 59, 48, 0.08)');
     } else if (this.state === 'thinking') {
       grad.addColorStop(0.7, 'rgba(255, 170, 0, 0.07)');
     } else {
-      grad.addColorStop(0.7, 'rgba(0, 243, 255, 0.09)');
+      const haloAlpha = 0.08 + (micBoost * 0.20);
+      grad.addColorStop(0.7, `rgba(0, 243, 255, ${haloAlpha.toFixed(3)})`);
     }
     grad.addColorStop(1, 'transparent');
     this.ctx.fillStyle = grad;
     this.ctx.beginPath();
-    this.ctx.arc(cx, cy, baseRadius + 60, 0, Math.PI * 2);
+    this.ctx.arc(cx, cy, baseRadius + 75, 0, Math.PI * 2);
     this.ctx.fill();
 
-    // 2. Concentric Orbital Rings (Outer HUD)
-    this.drawSegmentedRing(cx, cy, baseRadius + 45, this.rotation * 0.7, 6, 0.2, strokeColor, 1.5);
-    this.drawSegmentedRing(cx, cy, baseRadius + 30, -this.rotation * 1.2, 12, 0.08, strokeColor, 2);
+    // B. Concentric Orbital Rings (Outer HUD)
+    this.drawSegmentedRing(cx, cy, baseRadius + 45, this.rotation * 0.7, 6, 0.2, strokeColor, 1.5 + (micBoost * 1.5));
+    this.drawSegmentedRing(cx, cy, baseRadius + 30, -this.rotation * 1.2, 12, 0.08, strokeColor, 2 + (micBoost * 1.5));
     this.drawSegmentedRing(cx, cy, baseRadius + 18, this.rotation * 1.5, 24, 0.04, strokeColor, 1);
 
-    // 3. Audio Frequency Waveform around Perimeter (if unmuted)
+    // C. Live Oscilloscope Time-Domain Waveform Ring & Equalizer Bars
     if (this.state !== 'muted') {
-      this.drawAudioFrequencyRing(cx, cy, baseRadius + 12, avgAudio, glowColor);
+      this.drawOscilloscopeRing(cx, cy, baseRadius + 4, micBoost, glowColor);
+      this.drawAudioFrequencyRing(cx, cy, baseRadius + 14, micBoost, glowColor);
     } else {
       // Muted indicator ring
       this.drawSegmentedRing(cx, cy, baseRadius + 12, this.rotation * 0.2, 8, 0.15, 'rgba(255, 59, 48, 0.4)', 1.5);
     }
 
-    // 4. Inner Energy Ticks
-    this.drawRadialTicks(cx, cy, baseRadius - 5, this.rotation * 0.5, 36, 6, strokeColor);
+    // D. Inner Energy Radial Ticks
+    this.drawRadialTicks(cx, cy, baseRadius - 8, this.rotation * 0.5, 36, 6 + (micBoost * 8), strokeColor);
 
     requestAnimationFrame(this.animate);
   }
@@ -399,20 +504,66 @@ class JarvisVisualizer {
     this.ctx.restore();
   }
 
-  drawAudioFrequencyRing(cx, cy, radius, avgAudio, color) {
+  /**
+   * Draws a live undulating circular oscilloscope wave reacting to time-domain audio.
+   */
+  drawOscilloscopeRing(cx, cy, radius, boost, color) {
+    if (!this.timeDomainData || this.timeDomainData.length === 0) return;
+
+    this.ctx.save();
+    this.ctx.strokeStyle = color;
+    this.ctx.lineWidth = 2.0 + (boost * 2.0);
+    this.ctx.shadowColor = color;
+    this.ctx.shadowBlur = 10 + (boost * 15);
+    this.ctx.beginPath();
+
+    const points = 128;
+    const step = (Math.PI * 2) / points;
+    const dataLen = this.timeDomainData.length;
+
+    for (let i = 0; i <= points; i++) {
+      const dataIdx = Math.floor((i % points) * (dataLen / points));
+      // Normalize from 0..255 (128 is center silence) to -1.0 .. 1.0
+      const rawVal = (this.timeDomainData[dataIdx] - 128) / 128;
+      const waveOffset = rawVal * (20 + (boost * 35));
+
+      const angle = (i * step) + (this.rotation * 0.8);
+      const r = radius + waveOffset;
+      const x = cx + Math.cos(angle) * r;
+      const y = cy + Math.sin(angle) * r;
+
+      if (i === 0) {
+        this.ctx.moveTo(x, y);
+      } else {
+        this.ctx.lineTo(x, y);
+      }
+    }
+
+    this.ctx.closePath();
+    this.ctx.stroke();
+    this.ctx.restore();
+  }
+
+  /**
+   * Draws 64 radial frequency equalizer bars around the Ultron perimeter.
+   */
+  drawAudioFrequencyRing(cx, cy, radius, boost, color) {
     this.ctx.save();
     this.ctx.strokeStyle = color;
     this.ctx.fillStyle = color;
-    this.ctx.lineWidth = 2;
-    const bars = 48;
+    this.ctx.lineWidth = 2.5;
+    this.ctx.shadowColor = color;
+    this.ctx.shadowBlur = 8 + (boost * 14);
+
+    const bars = 64;
     const step = (Math.PI * 2) / bars;
 
     for (let i = 0; i < bars; i++) {
-      const dataIdx = Math.floor((i / bars) * (this.audioData.length / 2));
-      const val = (this.audioData[dataIdx] || 0) / 255;
-      const barHeight = Math.max(2, val * 35 + (avgAudio * 15));
+      const dataIdx = Math.floor((i / bars) * (this.frequencyData.length * 0.7));
+      const val = (this.frequencyData[dataIdx] || 0) / 255;
+      const barHeight = Math.max(4, (val * 55) + (boost * 25));
 
-      const angle = i * step;
+      const angle = (i * step) - (this.rotation * 0.5);
       const x1 = cx + Math.cos(angle) * radius;
       const y1 = cy + Math.sin(angle) * radius;
       const x2 = cx + Math.cos(angle) * (radius + barHeight);
@@ -427,11 +578,18 @@ class JarvisVisualizer {
   }
 }
 
-// Global visualizer instances
-let visualizer = null;
-let neuralVisualizer = null;
+// Global visualizer boots
+function bootVisualizers() {
+  if (!window.neuralVisualizer) {
+    window.neuralVisualizer = new NeuralSynapseVisualizer('neural-canvas');
+  }
+  if (!window.visualizer) {
+    window.visualizer = new JarvisVisualizer('jarvis-canvas');
+  }
+}
 
-window.addEventListener('DOMContentLoaded', () => {
-  window.neuralVisualizer = new NeuralSynapseVisualizer('neural-canvas');
-  window.visualizer = new JarvisVisualizer('jarvis-canvas');
-});
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootVisualizers);
+} else {
+  bootVisualizers();
+}
