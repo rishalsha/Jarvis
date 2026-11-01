@@ -511,39 +511,26 @@ class JarvisVoiceManager {
   isAcousticEcho(text) {
     if (!text) return false;
     const cleanLower = text.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
-    if (!cleanLower) return false;
+    // Short phrases, commands, answers are never false-flagged as echoes
+    if (cleanLower.length < 18) return false;
 
     const candidates = [];
     if (this.lastSpokenText) candidates.push(this.lastSpokenText);
     if (this.recentSpokenHistory) {
       for (let item of this.recentSpokenHistory) {
-        if (Date.now() - item.time < 25000) {
+        if (Date.now() - item.time < 15000) {
           candidates.push(item.text);
         }
       }
     }
 
-    const capturedWords = cleanLower.split(/\s+/).filter(w => w.length > 2);
-
     for (let candidate of candidates) {
       const spokenLower = candidate.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
       if (!spokenLower) continue;
 
-      // 1. Direct Substring Match
-      if (cleanLower.length >= 4 && (spokenLower.includes(cleanLower) || cleanLower.includes(spokenLower))) {
+      // Only flag if it's a long verbatim or exact match of an entire sentence
+      if (cleanLower.length >= 25 && (spokenLower.includes(cleanLower) || cleanLower.includes(spokenLower))) {
         return true;
-      }
-
-      // 2. Word Overlap Ratio (>= 33% words match)
-      if (capturedWords.length > 0) {
-        const spokenWords = new Set(spokenLower.split(/\s+/));
-        let matched = 0;
-        for (const w of capturedWords) {
-          if (spokenWords.has(w)) matched++;
-        }
-        if ((matched / capturedWords.length) >= 0.33) {
-          return true;
-        }
       }
     }
 
@@ -698,16 +685,20 @@ class JarvisVoiceManager {
     const clean = transcript.trim();
     if (!clean) return;
 
-    // 1. HARD ACOUSTIC ECHO SHIELD: Drop if speaking, in reverb cooldown, or matches JARVIS's own speech
-    if (this.isSpeaking || Date.now() < this.echoGuardUntil || this.isAcousticEcho(clean)) {
-      console.log('[*] Shielded against speaker acoustic echo:', clean);
-      this.activeConversationUntil = 0; // Terminate conversation window immediately on detected echo
+    // Filter isolated filler noises
+    if (/^(um|uh|ah|er|hmm|so)$/i.test(clean)) {
       return;
     }
 
-    // 2. Deduplication guard: ignore duplicate triggers within 1200ms
+    // Guard: ignore if Jarvis is currently thinking, speaking, or in cooldown
+    if (this.isSpeaking || this.isThinking || Date.now() < this.echoGuardUntil || this.isAcousticEcho(clean)) {
+      console.log('[*] Shielded against acoustic loop/busy state:', clean);
+      return;
+    }
+
+    // Deduplication guard: ignore duplicate triggers within 800ms
     const now = Date.now();
-    if (this.lastProcessedText.toLowerCase() === clean.toLowerCase() && (now - this.lastProcessedTime) < 1200) {
+    if (this.lastProcessedText.toLowerCase() === clean.toLowerCase() && (now - this.lastProcessedTime) < 800) {
       return;
     }
     this.lastProcessedText = clean;
@@ -717,14 +708,9 @@ class JarvisVoiceManager {
 
     const lower = clean.toLowerCase();
     const match = lower.match(this.wakeWordRegex);
-    const inActiveConversation = (now < this.activeConversationUntil);
 
     if (match) {
-      // Sir explicitly called wake word -> open 5-second active conversation window
-      this.activeConversationUntil = now + 5000;
       this.playJarvisChime();
-      this.setUIState('listening');
-
       const matchedPhrase = match[0];
       let remainingCommand = clean.substring(match.index + matchedPhrase.length).replace(/^[,.\s]+/, '').trim();
 
@@ -734,17 +720,9 @@ class JarvisVoiceManager {
         // Bare wake call ("Jarvis", etc.)
         this.sendUserSpeech(clean);
       }
-    } else if (inActiveConversation) {
-      // Follow-up within active window: guard against common greeting loopbacks
-      if (/^(good\s+(morning|afternoon|evening|night)|how\s+can\s+i|at\s+your\s+service|yes\s+sir|how\s+are\s+you)\b/i.test(clean)) {
-        console.log('[*] Shielded against greeting loopback in active conversation:', clean);
-        return;
-      }
-      this.activeConversationUntil = now + 5000;
-      this.sendUserSpeech(clean);
     } else {
-      // Ambient sound/speaker chatter without wake word: discard
-      console.log('[*] Ignored non-wake sound outside active conversation:', clean);
+      // Natural speech without wake word prefix: directly process and dispatch to Jarvis!
+      this.sendUserSpeech(clean);
     }
   }
 

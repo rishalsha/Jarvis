@@ -43,42 +43,32 @@ last_processed_user_time = 0.0
 
 def is_backend_acoustic_echo(user_text: str) -> bool:
     """
-    Detects if the incoming speech from the client is an acoustic echo
-    reverberating from Jarvis's own speakers into the microphone.
+    Detects if the incoming speech from the client is a verbatim runaway echo.
+    Because the frontend physically cuts the microphone while Jarvis is thinking
+    and speaking, short phrases, commands, and answers ('list files', 'yes please')
+    are never false-flagged as echos.
     """
     if not user_text:
         return False
 
     clean_user = re.sub(r'[^a-zA-Z0-9\s]', '', user_text).lower().strip()
-    if not clean_user:
+    # Anything under 15 characters cannot be a full-sentence speaker echo
+    if len(clean_user) < 15:
         return False
-    user_words = [w for w in clean_user.split() if len(w) > 2]
-    user_word_set = set(user_words)
-    now = time.time()
 
+    now = time.time()
     for item in recent_assistant_speeches:
         ts = item["time"]
         clean_speech = item["clean"]
 
-        # Only evaluate speeches within the last 25 seconds
-        if (now - ts) > 25.0:
+        # Only check within 15 seconds
+        if (now - ts) > 15.0:
             continue
 
-        # 1. Exact or Substring match
-        if (len(clean_user) >= 4 and clean_user in clean_speech) or (len(clean_speech) >= 4 and clean_speech in clean_user):
-            return True
-
-        # 2. String similarity ratio
+        # Near-identical full-sentence match
         sim = SequenceMatcher(None, clean_user, clean_speech).ratio()
-        if sim >= 0.42:
+        if sim >= 0.85:
             return True
-
-        # 3. High word overlap
-        speech_word_set = item["word_set"]
-        if user_word_set and speech_word_set:
-            overlap = len(user_word_set.intersection(speech_word_set)) / len(user_word_set)
-            if overlap >= 0.33:
-                return True
 
     return False
 
