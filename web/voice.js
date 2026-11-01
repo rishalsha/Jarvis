@@ -12,6 +12,8 @@ class JarvisVoiceManager {
     this.recognition = null;
     this.isListening = true;
     this.isSpeaking = false;
+    this.isThinking = false;
+    this.micAllowed = true;
     this.isRecognitionActive = false;
     this.isMicMuted = false;
     this.restartTimer = null;
@@ -165,7 +167,92 @@ class JarvisVoiceManager {
   }
 
   /**
-   * Halts any currently active speech audio immediately (Barge-In)
+   * Turn off microphone completely: stops recognition and disables hardware track
+   */
+  turnOffMicCompletely() {
+    this.micAllowed = false;
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+    if (this.speechDispatchTimer) {
+      clearTimeout(this.speechDispatchTimer);
+      this.speechDispatchTimer = null;
+    }
+    this.accumulatedSpeech = '';
+    this.lastInterimTranscript = '';
+
+    // 1. Abort speech recognition immediately
+    if (this.recognition) {
+      try {
+        this.recognition.abort();
+      } catch (e) {}
+    }
+    this.isRecognitionActive = false;
+
+    // 2. Hardware track disable: mute microphone input stream completely
+    if (window.jarvisMicStream) {
+      window.jarvisMicStream.getAudioTracks().forEach(track => {
+        track.enabled = false;
+      });
+    }
+
+    const tag = document.getElementById('hearing-live-tag');
+    if (tag && !this.isMicMuted) {
+      if (this.isSpeaking) {
+        tag.innerText = 'TRANSMITTING';
+        tag.style.color = '#00f3ff';
+        tag.style.borderColor = '#00f3ff';
+      } else if (this.isThinking) {
+        tag.innerText = 'PROCESSING';
+        tag.style.color = '#ff9f0a';
+        tag.style.borderColor = 'rgba(255, 159, 10, 0.4)';
+      } else {
+        tag.innerText = 'MIC OFF';
+        tag.style.color = '#ff9f0a';
+        tag.style.borderColor = 'rgba(255, 159, 10, 0.4)';
+      }
+    }
+  }
+
+  /**
+   * Turn on microphone after Jarvis completes speaking and room settles
+   */
+  turnOnMicAfterCompletion(delayMs = 1200) {
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+    if (this.isMicMuted) return;
+
+    this.restartTimer = setTimeout(() => {
+      // Guard: only turn on if Jarvis has finished both thinking and speaking
+      if (this.isSpeaking || this.isThinking || this.isMicMuted) return;
+
+      this.micAllowed = true;
+
+      // Re-enable microphone hardware track
+      if (window.jarvisMicStream) {
+        window.jarvisMicStream.getAudioTracks().forEach(track => {
+          track.enabled = true;
+        });
+      }
+
+      this.setUIState('listening');
+
+      const tag = document.getElementById('hearing-live-tag');
+      if (tag && !this.isMicMuted) {
+        tag.innerText = 'LISTENING';
+        tag.style.color = '#00f3ff';
+        tag.style.borderColor = 'rgba(0, 243, 255, 0.3)';
+      }
+
+      this.startContinuousListening();
+    }, delayMs);
+  }
+
+  /**
+   * Halts any currently active speech audio immediately
    */
   cancelSpeakingAudio() {
     if (this.currentAudio) {
@@ -183,13 +270,9 @@ class JarvisVoiceManager {
       this.speakingWatchdog = null;
     }
     this.isSpeaking = false;
-    // Re-enable microphone track if previously deafened
-    if (window.jarvisMicStream) {
-      window.jarvisMicStream.getAudioTracks().forEach(track => {
-        track.enabled = true;
-      });
-    }
+    this.isThinking = false;
     this.finalizeSpeakingCaption();
+    this.turnOnMicAfterCompletion(300);
   }
 
   initWebSocket() {
@@ -229,6 +312,10 @@ class JarvisVoiceManager {
         chipIot.innerText = data.mqtt_connected ? 'iDOCK IOT: LINKED' : 'iDOCK IOT: CONNECTING';
       }
     } else if (data.type === 'state_change') {
+      if (data.state === 'thinking') {
+        this.isThinking = true;
+        this.turnOffMicCompletely();
+      }
       if (!this.isMicMuted) {
         this.setUIState(data.state);
       }
@@ -238,6 +325,9 @@ class JarvisVoiceManager {
     } else if (data.type === 'jarvis_speech') {
       const reply = data.reply || 'At your command, sir.';
       this.appendTranscript('J.A.R.V.I.S.', reply);
+      this.isThinking = false;
+      this.isSpeaking = true;
+      this.turnOffMicCompletely();
       this.speakAsJarvis(reply);
     }
   }
@@ -340,21 +430,11 @@ class JarvisVoiceManager {
         URL.revokeObjectURL(audioUrl);
         this.currentAudio = null;
         this.isSpeaking = false;
-        // 1200ms room reverb cooldown: wait for loud speaker acoustic decay
+        this.isThinking = false;
         this.echoGuardUntil = Date.now() + 1200;
         this.finalizeSpeakingCaption();
-
-        setTimeout(() => {
-          if (!this.isSpeaking && !this.isMicMuted) {
-            if (window.jarvisMicStream) {
-              window.jarvisMicStream.getAudioTracks().forEach(track => {
-                track.enabled = true;
-              });
-            }
-            this.setUIState('listening');
-            this.scheduleRecognitionRestart(100);
-          }
-        }, 1200);
+        // Turn mic back on after room reverb has completely settled
+        this.turnOnMicAfterCompletion(1200);
       };
 
       audio.onerror = (err) => {
@@ -373,7 +453,8 @@ class JarvisVoiceManager {
   fallbackWebSpeech(text) {
     if (!('speechSynthesis' in window) || !text) {
       this.isSpeaking = false;
-      if (!this.isMicMuted) this.setUIState('listening');
+      this.isThinking = false;
+      this.turnOnMicAfterCompletion(500);
       return;
     }
 
@@ -395,36 +476,18 @@ class JarvisVoiceManager {
 
     utterance.onend = () => {
       this.isSpeaking = false;
+      this.isThinking = false;
       this.echoGuardUntil = Date.now() + 1200;
       this.finalizeSpeakingCaption();
-      setTimeout(() => {
-        if (!this.isSpeaking && !this.isMicMuted) {
-          if (window.jarvisMicStream) {
-            window.jarvisMicStream.getAudioTracks().forEach(track => {
-              track.enabled = true;
-            });
-          }
-          this.setUIState('listening');
-          this.scheduleRecognitionRestart(100);
-        }
-      }, 1200);
+      this.turnOnMicAfterCompletion(1200);
     };
 
     utterance.onerror = () => {
       this.isSpeaking = false;
+      this.isThinking = false;
       this.echoGuardUntil = Date.now() + 1200;
       this.finalizeSpeakingCaption();
-      setTimeout(() => {
-        if (!this.isSpeaking && !this.isMicMuted) {
-          if (window.jarvisMicStream) {
-            window.jarvisMicStream.getAudioTracks().forEach(track => {
-              track.enabled = true;
-            });
-          }
-          this.setUIState('listening');
-          this.scheduleRecognitionRestart(100);
-        }
-      }, 1200);
+      this.turnOnMicAfterCompletion(1200);
     };
 
     window.speechSynthesis.speak(utterance);
@@ -590,9 +653,9 @@ class JarvisVoiceManager {
         console.warn('Speech Recognition error/notice:', e.error);
       }
       this.isRecognitionActive = false;
-      // Chrome automatically drops recognition on network, audio-capture, or abort
-      if (!this.isSpeaking && !this.isMicMuted) {
-        const delay = (e.error === 'network') ? 500 : 150;
+      // Only restart if mic is explicitly allowed (NOT thinking, speaking, or muted)
+      if (this.micAllowed && !this.isSpeaking && !this.isThinking && !this.isMicMuted) {
+        const delay = (e.error === 'network') ? 500 : 200;
         this.scheduleRecognitionRestart(delay);
       }
     };
@@ -600,18 +663,18 @@ class JarvisVoiceManager {
     this.recognition.onend = () => {
       this.isRecognitionActive = false;
       const tag = document.getElementById('hearing-live-tag');
-      if (tag && !this.isSpeaking && !this.isMicMuted) {
+      if (tag && this.micAllowed && !this.isSpeaking && !this.isThinking && !this.isMicMuted) {
         tag.innerText = 'LISTENING';
         tag.style.color = '#00f3ff';
       }
-      if (!this.isSpeaking && !this.isMicMuted) {
-        this.scheduleRecognitionRestart(80);
+      if (this.micAllowed && !this.isSpeaking && !this.isThinking && !this.isMicMuted) {
+        this.scheduleRecognitionRestart(100);
       }
     };
 
-    // Watchdog heartbeat: auto-revive recognition if Chrome drops it
+    // Watchdog heartbeat: auto-revive recognition ONLY when mic is allowed and idle
     setInterval(() => {
-      if (!this.isSpeaking && !this.isRecognitionActive && !this.isMicMuted) {
+      if (this.micAllowed && !this.isSpeaking && !this.isThinking && !this.isRecognitionActive && !this.isMicMuted) {
         this.startContinuousListening();
       }
     }, 1500);
@@ -784,14 +847,14 @@ class JarvisVoiceManager {
 
   scheduleRecognitionRestart(delayMs) {
     if (this.restartTimer) clearTimeout(this.restartTimer);
-    if (this.isMicMuted) return;
+    if (!this.micAllowed || this.isSpeaking || this.isThinking || this.isMicMuted) return;
     this.restartTimer = setTimeout(() => {
       this.startContinuousListening();
     }, delayMs);
   }
 
   startContinuousListening() {
-    if (!this.recognition || this.isSpeaking || this.isRecognitionActive || this.isMicMuted) return;
+    if (!this.micAllowed || !this.recognition || this.isSpeaking || this.isThinking || this.isRecognitionActive || this.isMicMuted) return;
     try {
       this.recognition.start();
     } catch (e) {
@@ -803,6 +866,9 @@ class JarvisVoiceManager {
 
   sendUserSpeech(text) {
     if (!text || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    this.isThinking = true;
+    this.turnOffMicCompletely();
+    this.setUIState('thinking');
     this.ws.send(JSON.stringify({
       type: 'user_speech',
       text: text
