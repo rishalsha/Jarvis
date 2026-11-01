@@ -387,20 +387,25 @@ class JarvisVoiceManager {
     this.setUIState('speaking');
     this.initSpeakingCaption(text);
 
-    // Safety watchdog: ensure isSpeaking is NEVER hung or stuck for more than 15s
+    // Dynamic speaking watchdog: scaled to text length (never prematurely aborts long responses)
+    const wordCount = (text.match(/\S+/g) || []).length;
+    const initialWatchdogMs = Math.max(60000, Math.ceil((wordCount / 1.5) + 30) * 1000);
     if (this.speakingWatchdog) clearTimeout(this.speakingWatchdog);
     this.speakingWatchdog = setTimeout(() => {
       if (this.isSpeaking) {
         console.warn("[Watchdog] Resetting hung isSpeaking state.");
         this.cancelSpeakingAudio();
-        this.scheduleRecognitionRestart(100);
+        this.turnOnMicAfterCompletion(100);
       }
-    }, 15000);
+    }, initialWatchdogMs);
 
     try {
-      // 1. Ultra-fast local neural Piper synthesis (~75ms, length_scale 0.80)
-      const ttsUrl = `/api/tts?text=${encodeURIComponent(text)}&engine_type=piper`;
-      const response = await fetch(ttsUrl);
+      // 1. Ultra-fast local neural Piper synthesis via robust POST endpoint
+      const response = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text, engine_type: 'piper' })
+      });
       if (!response.ok) throw new Error("TTS endpoint error: " + response.status);
 
       const blob = await response.blob();
@@ -408,6 +413,20 @@ class JarvisVoiceManager {
       const audio = new Audio(audioUrl);
       audio.playbackRate = 1.10; // Snappy, brisk AI cadence
       this.currentAudio = audio;
+
+      // Adjust watchdog precisely once audio duration metadata is known
+      audio.onloadedmetadata = () => {
+        if (audio.duration && isFinite(audio.duration)) {
+          if (this.speakingWatchdog) clearTimeout(this.speakingWatchdog);
+          this.speakingWatchdog = setTimeout(() => {
+            if (this.isSpeaking) {
+              console.warn("[Watchdog] Audio duration exceeded buffer.");
+              this.cancelSpeakingAudio();
+              this.turnOnMicAfterCompletion(100);
+            }
+          }, Math.ceil((audio.duration + 10) * 1000));
+        }
+      };
 
       if (this.audioCtx && this.audioCtx.state === 'suspended') {
         this.audioCtx.resume();
@@ -475,6 +494,16 @@ class JarvisVoiceManager {
     utterance.pitch = 0.95;  // Calm, grounded resonance
     utterance.volume = 1.0;
 
+    // Chrome bug workaround: prevents Chrome from pausing synthesis after 15 seconds
+    const synthKeepAlive = setInterval(() => {
+      if (!window.speechSynthesis.speaking) {
+        clearInterval(synthKeepAlive);
+      } else {
+        window.speechSynthesis.pause();
+        window.speechSynthesis.resume();
+      }
+    }, 9000);
+
     utterance.onboundary = (event) => {
       if (event.name === 'word') {
         this.highlightSpeakingWord(event.charIndex);
@@ -482,6 +511,7 @@ class JarvisVoiceManager {
     };
 
     utterance.onend = () => {
+      clearInterval(synthKeepAlive);
       this.isSpeaking = false;
       this.isThinking = false;
       this.echoGuardUntil = Date.now() + 1200;
@@ -490,6 +520,7 @@ class JarvisVoiceManager {
     };
 
     utterance.onerror = () => {
+      clearInterval(synthKeepAlive);
       this.isSpeaking = false;
       this.isThinking = false;
       this.echoGuardUntil = Date.now() + 1200;

@@ -108,13 +108,12 @@ async def chat_api(req: ChatRequest):
     return res
 
 
-@app.get("/api/tts")
-async def get_tts_audio(text: str, engine_type: str = "piper"):
-    """
-    Ultra-fast TTS endpoint.
-    'piper': In-memory local neural ONNX synthesis (~75ms).
-    'edge': Microsoft Edge Neural en-GB-RyanNeural (~500ms).
-    """
+class TTSRequest(BaseModel):
+    text: str
+    engine_type: str = "piper"
+
+
+async def handle_tts_synthesis(text: str, engine_type: str = "piper"):
     if not text:
         return Response(status_code=400)
     try:
@@ -128,6 +127,18 @@ async def get_tts_audio(text: str, engine_type: str = "piper"):
     except Exception as e:
         logger.error(f"TTS generation error: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/tts")
+async def post_tts_audio(req: TTSRequest):
+    """POST TTS endpoint avoiding URL query string length limitations."""
+    return await handle_tts_synthesis(req.text, req.engine_type)
+
+
+@app.get("/api/tts")
+async def get_tts_audio(text: str, engine_type: str = "piper"):
+    """GET TTS endpoint for quick browser testing."""
+    return await handle_tts_synthesis(text, engine_type)
 
 
 @app.websocket("/ws")
