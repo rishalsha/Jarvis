@@ -27,6 +27,7 @@ class JarvisVoiceManager {
     this.speechDispatchTimer = null;
     this.speakingWatchdog = null;
     this.lastSpokenText = '';
+    this.recentSpokenHistory = [];
     this.echoGuardUntil = 0;
     this.activeConversationUntil = 0;
 
@@ -182,6 +183,12 @@ class JarvisVoiceManager {
       this.speakingWatchdog = null;
     }
     this.isSpeaking = false;
+    // Re-enable microphone track if previously deafened
+    if (window.jarvisMicStream) {
+      window.jarvisMicStream.getAudioTracks().forEach(track => {
+        track.enabled = true;
+      });
+    }
     this.finalizeSpeakingCaption();
   }
 
@@ -265,12 +272,25 @@ class JarvisVoiceManager {
     this.cancelSpeakingAudio();
 
     this.lastSpokenText = text;
+    if (!this.recentSpokenHistory) this.recentSpokenHistory = [];
+    this.recentSpokenHistory.unshift({ text: text, time: Date.now() });
+    if (this.recentSpokenHistory.length > 8) this.recentSpokenHistory.pop();
+
     this.isSpeaking = true;
+    this.activeConversationUntil = 0; // Terminate open conversation window during output
     this.pauseRecognitionForSpeech();
+
+    // HARD HARDWARE DEAFENING: Disable microphone audio tracks so loud speakers can't feed back
+    if (window.jarvisMicStream) {
+      window.jarvisMicStream.getAudioTracks().forEach(track => {
+        track.enabled = false;
+      });
+    }
+
     this.setUIState('speaking');
     this.initSpeakingCaption(text);
 
-    // Safety watchdog: ensure isSpeaking is NEVER hung or stuck for more than 12s
+    // Safety watchdog: ensure isSpeaking is NEVER hung or stuck for more than 15s
     if (this.speakingWatchdog) clearTimeout(this.speakingWatchdog);
     this.speakingWatchdog = setTimeout(() => {
       if (this.isSpeaking) {
@@ -278,7 +298,7 @@ class JarvisVoiceManager {
         this.cancelSpeakingAudio();
         this.scheduleRecognitionRestart(100);
       }
-    }, 12000);
+    }, 15000);
 
     try {
       // 1. Ultra-fast local neural Piper synthesis (~75ms, length_scale 0.80)
@@ -320,13 +340,21 @@ class JarvisVoiceManager {
         URL.revokeObjectURL(audioUrl);
         this.currentAudio = null;
         this.isSpeaking = false;
-        // 750ms acoustic echo cooldown: wait for loud speaker room reverb to settle!
-        this.echoGuardUntil = Date.now() + 750;
-        if (!this.isMicMuted) {
-          this.setUIState('listening');
-        }
+        // 1200ms room reverb cooldown: wait for loud speaker acoustic decay
+        this.echoGuardUntil = Date.now() + 1200;
         this.finalizeSpeakingCaption();
-        this.scheduleRecognitionRestart(750);
+
+        setTimeout(() => {
+          if (!this.isSpeaking && !this.isMicMuted) {
+            if (window.jarvisMicStream) {
+              window.jarvisMicStream.getAudioTracks().forEach(track => {
+                track.enabled = true;
+              });
+            }
+            this.setUIState('listening');
+            this.scheduleRecognitionRestart(100);
+          }
+        }, 1200);
       };
 
       audio.onerror = (err) => {
@@ -367,18 +395,36 @@ class JarvisVoiceManager {
 
     utterance.onend = () => {
       this.isSpeaking = false;
-      this.echoGuardUntil = Date.now() + 750;
-      if (!this.isMicMuted) this.setUIState('listening');
+      this.echoGuardUntil = Date.now() + 1200;
       this.finalizeSpeakingCaption();
-      this.scheduleRecognitionRestart(750);
+      setTimeout(() => {
+        if (!this.isSpeaking && !this.isMicMuted) {
+          if (window.jarvisMicStream) {
+            window.jarvisMicStream.getAudioTracks().forEach(track => {
+              track.enabled = true;
+            });
+          }
+          this.setUIState('listening');
+          this.scheduleRecognitionRestart(100);
+        }
+      }, 1200);
     };
 
     utterance.onerror = () => {
       this.isSpeaking = false;
-      this.echoGuardUntil = Date.now() + 750;
-      if (!this.isMicMuted) this.setUIState('listening');
+      this.echoGuardUntil = Date.now() + 1200;
       this.finalizeSpeakingCaption();
-      this.scheduleRecognitionRestart(750);
+      setTimeout(() => {
+        if (!this.isSpeaking && !this.isMicMuted) {
+          if (window.jarvisMicStream) {
+            window.jarvisMicStream.getAudioTracks().forEach(track => {
+              track.enabled = true;
+            });
+          }
+          this.setUIState('listening');
+          this.scheduleRecognitionRestart(100);
+        }
+      }, 1200);
     };
 
     window.speechSynthesis.speak(utterance);
@@ -400,29 +446,45 @@ class JarvisVoiceManager {
   }
 
   isAcousticEcho(text) {
-    if (!this.lastSpokenText) return false;
+    if (!text) return false;
     const cleanLower = text.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
-    const spokenLower = this.lastSpokenText.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+    if (!cleanLower) return false;
 
-    if (!cleanLower || !spokenLower) return false;
-
-    // Direct substring match
-    if (cleanLower.length > 3 && (spokenLower.includes(cleanLower) || cleanLower.includes(spokenLower))) {
-      return true;
+    const candidates = [];
+    if (this.lastSpokenText) candidates.push(this.lastSpokenText);
+    if (this.recentSpokenHistory) {
+      for (let item of this.recentSpokenHistory) {
+        if (Date.now() - item.time < 25000) {
+          candidates.push(item.text);
+        }
+      }
     }
 
-    // Word overlap ratio: if >= 40% of captured words match JARVIS's own speech, reject
     const capturedWords = cleanLower.split(/\s+/).filter(w => w.length > 2);
-    if (capturedWords.length === 0) return false;
 
-    const spokenWords = new Set(spokenLower.split(/\s+/));
-    let matched = 0;
-    for (const w of capturedWords) {
-      if (spokenWords.has(w)) matched++;
+    for (let candidate of candidates) {
+      const spokenLower = candidate.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+      if (!spokenLower) continue;
+
+      // 1. Direct Substring Match
+      if (cleanLower.length >= 4 && (spokenLower.includes(cleanLower) || cleanLower.includes(spokenLower))) {
+        return true;
+      }
+
+      // 2. Word Overlap Ratio (>= 33% words match)
+      if (capturedWords.length > 0) {
+        const spokenWords = new Set(spokenLower.split(/\s+/));
+        let matched = 0;
+        for (const w of capturedWords) {
+          if (spokenWords.has(w)) matched++;
+        }
+        if ((matched / capturedWords.length) >= 0.33) {
+          return true;
+        }
+      }
     }
 
-    const overlap = matched / capturedWords.length;
-    return overlap >= 0.40;
+    return false;
   }
 
   initAlwaysListeningRecognition() {
@@ -451,8 +513,14 @@ class JarvisVoiceManager {
       if (this.isMicMuted) return;
 
       // HARD ACOUSTIC ECHO SHIELD:
-      // Completely discard any input received while JARVIS is speaking or within the 750ms reverb window
+      // Completely discard any input received while JARVIS is speaking or within the reverb window
       if (this.isSpeaking || Date.now() < this.echoGuardUntil) {
+        this.accumulatedSpeech = '';
+        this.lastInterimTranscript = '';
+        if (this.speechDispatchTimer) {
+          clearTimeout(this.speechDispatchTimer);
+          this.speechDispatchTimer = null;
+        }
         return;
       }
 
@@ -570,12 +638,13 @@ class JarvisVoiceManager {
     // 1. HARD ACOUSTIC ECHO SHIELD: Drop if speaking, in reverb cooldown, or matches JARVIS's own speech
     if (this.isSpeaking || Date.now() < this.echoGuardUntil || this.isAcousticEcho(clean)) {
       console.log('[*] Shielded against speaker acoustic echo:', clean);
+      this.activeConversationUntil = 0; // Terminate conversation window immediately on detected echo
       return;
     }
 
-    // 2. Deduplication guard: ignore duplicate triggers within 800ms
+    // 2. Deduplication guard: ignore duplicate triggers within 1200ms
     const now = Date.now();
-    if (this.lastProcessedText.toLowerCase() === clean.toLowerCase() && (now - this.lastProcessedTime) < 800) {
+    if (this.lastProcessedText.toLowerCase() === clean.toLowerCase() && (now - this.lastProcessedTime) < 1200) {
       return;
     }
     this.lastProcessedText = clean;
@@ -588,8 +657,8 @@ class JarvisVoiceManager {
     const inActiveConversation = (now < this.activeConversationUntil);
 
     if (match) {
-      // Sir explicitly called wake word -> open 10-second active conversation window
-      this.activeConversationUntil = now + 10000;
+      // Sir explicitly called wake word -> open 5-second active conversation window
+      this.activeConversationUntil = now + 5000;
       this.playJarvisChime();
       this.setUIState('listening');
 
@@ -603,11 +672,15 @@ class JarvisVoiceManager {
         this.sendUserSpeech(clean);
       }
     } else if (inActiveConversation) {
-      // Sir is following up in an active conversation (within 10s of previous turn)
-      this.activeConversationUntil = now + 10000;
+      // Follow-up within active window: guard against common greeting loopbacks
+      if (/^(good\s+(morning|afternoon|evening|night)|how\s+can\s+i|at\s+your\s+service|yes\s+sir|how\s+are\s+you)\b/i.test(clean)) {
+        console.log('[*] Shielded against greeting loopback in active conversation:', clean);
+        return;
+      }
+      this.activeConversationUntil = now + 5000;
       this.sendUserSpeech(clean);
     } else {
-      // Ambient noise/speaker sound without wake word: completely drop to prevent runaway feedback loops
+      // Ambient sound/speaker chatter without wake word: discard
       console.log('[*] Ignored non-wake sound outside active conversation:', clean);
     }
   }

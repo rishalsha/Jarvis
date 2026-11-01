@@ -7,6 +7,10 @@ import os
 import json
 import asyncio
 import logging
+import time
+import re
+from collections import deque
+from difflib import SequenceMatcher
 from typing import Set
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -30,6 +34,64 @@ engine = JarvisEngine(config)
 
 # Connected WebSockets (for live HUD broadcast)
 connected_clients: Set[WebSocket] = set()
+
+# Acoustic Echo Prevention Shield
+recent_assistant_speeches = deque(maxlen=10)
+last_processed_user_text = ""
+last_processed_user_time = 0.0
+
+
+def is_backend_acoustic_echo(user_text: str) -> bool:
+    """
+    Detects if the incoming speech from the client is an acoustic echo
+    reverberating from Jarvis's own speakers into the microphone.
+    """
+    if not user_text:
+        return False
+
+    clean_user = re.sub(r'[^a-zA-Z0-9\s]', '', user_text).lower().strip()
+    if not clean_user:
+        return False
+    user_words = [w for w in clean_user.split() if len(w) > 2]
+    user_word_set = set(user_words)
+    now = time.time()
+
+    for item in recent_assistant_speeches:
+        ts = item["time"]
+        clean_speech = item["clean"]
+
+        # Only evaluate speeches within the last 25 seconds
+        if (now - ts) > 25.0:
+            continue
+
+        # 1. Exact or Substring match
+        if (len(clean_user) >= 4 and clean_user in clean_speech) or (len(clean_speech) >= 4 and clean_speech in clean_user):
+            return True
+
+        # 2. String similarity ratio
+        sim = SequenceMatcher(None, clean_user, clean_speech).ratio()
+        if sim >= 0.42:
+            return True
+
+        # 3. High word overlap
+        speech_word_set = item["word_set"]
+        if user_word_set and speech_word_set:
+            overlap = len(user_word_set.intersection(speech_word_set)) / len(user_word_set)
+            if overlap >= 0.33:
+                return True
+
+    return False
+
+
+@app.middleware("http")
+async def add_no_cache_headers(request, call_next):
+    """Guarantees browser HUD never caches stale JS/CSS during live system use."""
+    response = await call_next(request)
+    if request.url.path.endswith((".js", ".html", ".css")):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 
 class ChatRequest(BaseModel):
@@ -109,6 +171,24 @@ async def websocket_endpoint(websocket: WebSocket):
                 if not text:
                     continue
 
+                now = time.time()
+                # Deduplication shield within 1.2s
+                global last_processed_user_text, last_processed_user_time
+                if text.lower() == last_processed_user_text.lower() and (now - last_processed_user_time) < 1.2:
+                    continue
+                last_processed_user_text = text
+                last_processed_user_time = now
+
+                # HARD ACOUSTIC ECHO SHIELD (BACKEND DEFENSE):
+                # If this text matches words Jarvis spoke recently out of loud speakers, drop it immediately
+                if is_backend_acoustic_echo(text):
+                    logger.warning(f"[ECHO SHIELD] Discarded speaker acoustic loopback: '{text}'")
+                    await websocket.send_json({
+                        "type": "state_change",
+                        "state": "listening"
+                    })
+                    continue
+
                 logger.info(f"Received speech from Sir: '{text}'")
 
                 # 1. Inform HUD: Jarvis is thinking
@@ -126,6 +206,15 @@ async def websocket_endpoint(websocket: WebSocket):
                 tools_run = result.get("tools_executed", [])
 
                 logger.info(f"Jarvis reply: '{reply_text}'")
+
+                # Track assistant speech for echo shield
+                clean_reply = re.sub(r'[^a-zA-Z0-9\s]', '', reply_text).lower().strip()
+                recent_assistant_speeches.append({
+                    "time": time.time(),
+                    "raw": reply_text,
+                    "clean": clean_reply,
+                    "word_set": set([w for w in clean_reply.split() if len(w) > 2])
+                })
 
                 # 3. Inform HUD: Jarvis is speaking response
                 await websocket.send_json({

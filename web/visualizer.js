@@ -290,12 +290,13 @@ class JarvisVisualizer {
       if (!this.micStream && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         this.micStream = await navigator.mediaDevices.getUserMedia({
           audio: {
-            echoCancellation: false,
-            autoGainControl: true,
-            noiseSuppression: false
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: false
           },
           video: false
         });
+        window.jarvisMicStream = this.micStream;
       }
 
       if (this.micStream && !this.analyser) {
