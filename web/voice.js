@@ -324,6 +324,13 @@ class JarvisVoiceManager {
       }
     } else if (data.type === 'jarvis_speech') {
       const reply = data.reply || 'At your command, sir.';
+      const tools = data.tools || [];
+      const hasVision = tools.some(t => t.tool === 'inspect_screen');
+
+      if (hasVision) {
+        this.updateStatus('Optical Sensors Active // Visual Cortex Analyzed Screen Frame');
+      }
+
       this.appendTranscript('J.A.R.V.I.S.', reply);
       this.isThinking = false;
       this.isSpeaking = true;

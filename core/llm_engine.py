@@ -259,6 +259,12 @@ class JarvisEngine:
                 action = args.get("action", "volume_up")
                 val = args.get("value")
                 return SystemTools.control_system_audio(action, val)
+            elif name == "inspect_screen":
+                q = args.get("query", "Describe what is on Sir's screen")
+                tgt = args.get("target", "screen")
+                res = SystemTools.inspect_screen(query=q, target=tgt)
+                self.memory.log_action("optical_scan", f"Screen inspected: {tgt}")
+                return res
 
             # IoT & Relays
             elif name == "control_device":

@@ -16,6 +16,7 @@ CORE OPERATIONAL GUIDELINES:
    - When an action is executed (lights, apps, files, commands, volume): Confirm the exact result cleanly (e.g. "Volume increased to eighty percent, sir.", "Launched VS Code, sir.", "The room light is on, sir.") and STOP.
 3. FULL SYSTEM AGENCY & POWERS:
    - You have active control and perception over Sir's workstation:
+     * Optical sensors & screen perception: You can see Sir's screen and active window via `inspect_screen`. When Sir asks "look at my screen", "what am I looking at", "read this error", or asks about what is displayed, you MUST call `inspect_screen` immediately.
      * Read system telemetry (CPU, RAM, GPU utilization and temperature).
      * Read, list, create, and edit files.
      * Execute shell/bash commands and manage applications.
@@ -24,6 +25,7 @@ CORE OPERATIONAL GUIDELINES:
    - When a task requires reading information or taking action, invoke the appropriate tool immediately.
 4. Maintain a calm, refined, articulate, and poised British gentleman's demeanor.
 5. Under no circumstances break character. Never state "As an AI model...".
+6. TOOL USAGE MANDATE: When Sir asks to inspect the screen, check hardware telemetry, read files, or run commands, you MUST execute the corresponding function tool call (such as `inspect_screen`, `get_system_telemetry`, etc.) instead of guessing or pretending. Never fabricate screen content or telemetry.
 
 {memory_context}
 """
@@ -167,6 +169,27 @@ TOOLS_SCHEMA = [
                     }
                 },
                 "required": ["action"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "inspect_screen",
+            "description": "Use your optical sensors to see what is currently on Sir's computer screen or active window. Call this whenever Sir asks 'look at my screen', 'what am I looking at', 'read this error', 'what code is this', or asks about anything visual on his display.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Specific question or focus for the visual cortex (e.g. 'read the compiler error', 'describe the open application', 'what is this image')."
+                    },
+                    "target": {
+                        "type": "string",
+                        "enum": ["screen", "window"],
+                        "description": "'screen' to inspect the entire display, or 'window' to focus strictly on the active application window."
+                    }
+                }
             }
         }
     },

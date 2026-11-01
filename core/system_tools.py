@@ -308,3 +308,16 @@ class SystemTools:
                 return {"status": "error", "message": f"Unknown audio action {action}"}
         except Exception as e:
             return {"status": "error", "message": str(e)}
+
+    @staticmethod
+    def inspect_screen(query: str = "Describe what is on my screen", target: str = "screen") -> Dict[str, Any]:
+        """
+        Activates J.A.R.V.I.S.'s visual cortex. Captures the primary display or focused window,
+        extracts verbatim text with local OCR, and understands visual content with a local vision model.
+        """
+        try:
+            from core.vision_engine import vision_engine
+            return vision_engine.inspect_screen(query=query, target=target)
+        except Exception as e:
+            logger.error(f"Error in inspect_screen tool: {e}")
+            return {"status": "error", "message": f"Optical sensor failure: {e}"}
