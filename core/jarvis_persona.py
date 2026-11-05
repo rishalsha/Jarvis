@@ -199,13 +199,13 @@ TOOLS_SCHEMA = [
         "type": "function",
         "function": {
             "name": "control_device",
-            "description": "Turn on, turn off, or toggle room accessories such as the fan, room light, or desk bulb.",
+            "description": "Turn on, turn off, or toggle room accessories such as the fan, room light, desk bulb, or desk strip light.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "device_name": {
                         "type": "string",
-                        "description": "Name of the accessory to control: 'fan', 'light', or 'bulb'."
+                        "description": "Name of the accessory to control: 'fan', 'light', 'bulb', or 'strip_light'."
                     },
                     "state": {
                         "type": "string",

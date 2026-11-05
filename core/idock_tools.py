@@ -14,15 +14,21 @@ import paho.mqtt.client as mqtt
 logger = logging.getLogger("Jarvis.iDock")
 
 DEVICES = {
-    "fan": {"channel": "POWER1", "name": "Room Fan"},
-    "room_fan": {"channel": "POWER1", "name": "Room Fan"},
-    "ceiling_fan": {"channel": "POWER1", "name": "Room Fan"},
-    "light": {"channel": "POWER2", "name": "Room Light"},
-    "room_light": {"channel": "POWER2", "name": "Room Light"},
-    "main_light": {"channel": "POWER2", "name": "Room Light"},
-    "bulb": {"channel": "POWER3", "name": "Desk Bulb"},
-    "room_bulb": {"channel": "POWER3", "name": "Desk Bulb"},
-    "desk_bulb": {"channel": "POWER3", "name": "Desk Bulb"},
+    "fan": {"topic": "room_light", "channel": "POWER1", "name": "Room Fan"},
+    "room_fan": {"topic": "room_light", "channel": "POWER1", "name": "Room Fan"},
+    "ceiling_fan": {"topic": "room_light", "channel": "POWER1", "name": "Room Fan"},
+    "light": {"topic": "room_light", "channel": "POWER2", "name": "Room Light"},
+    "room_light": {"topic": "room_light", "channel": "POWER2", "name": "Room Light"},
+    "main_light": {"topic": "room_light", "channel": "POWER2", "name": "Room Light"},
+    "bulb": {"topic": "room_light", "channel": "POWER3", "name": "Desk Bulb"},
+    "room_bulb": {"topic": "room_light", "channel": "POWER3", "name": "Desk Bulb"},
+    "desk_bulb": {"topic": "room_light", "channel": "POWER3", "name": "Desk Bulb"},
+    "strip_light": {"topic": "strip_light", "channel": "POWER", "name": "Strip Light"},
+    "strip": {"topic": "strip_light", "channel": "POWER", "name": "Strip Light"},
+    "desk_strip": {"topic": "strip_light", "channel": "POWER", "name": "Strip Light"},
+    "table_strip": {"topic": "strip_light", "channel": "POWER", "name": "Strip Light"},
+    "table_strip_light": {"topic": "strip_light", "channel": "POWER", "name": "Strip Light"},
+    "led_strip": {"topic": "strip_light", "channel": "POWER", "name": "Strip Light"},
 }
 
 COMPUTERS = {
@@ -61,7 +67,7 @@ class IDockController:
         self.client_id = f"jarvis_idock_{uuid.uuid4().hex[:8]}"
         self.client = None
         self.connected = False
-        self.device_states = {"fan": "UNKNOWN", "light": "UNKNOWN", "bulb": "UNKNOWN"}
+        self.device_states = {"fan": "UNKNOWN", "light": "UNKNOWN", "bulb": "UNKNOWN", "strip_light": "UNKNOWN"}
         self._init_mqtt()
 
     def _init_mqtt(self):
@@ -80,8 +86,10 @@ class IDockController:
             self.connected = True
             logger.info("Connected to iDock MQTT broker.")
             client.subscribe("stat/room_light/+")
+            client.subscribe("stat/strip_light/+")
             client.subscribe("stat/+/status")
             client.publish("cmnd/room_light/POWER0", "")
+            client.publish("cmnd/strip_light/POWER", "")
         else:
             logger.error(f"MQTT connect returned error code: {rc}")
 
@@ -98,9 +106,11 @@ class IDockController:
             self.device_states["light"] = payload
         elif topic == "stat/room_light/POWER3":
             self.device_states["bulb"] = payload
+        elif topic == "stat/strip_light/POWER":
+            self.device_states["strip_light"] = payload
 
     def control_device(self, device_name: str, state: str) -> dict:
-        """Control fan, light, or bulb (state: ON, OFF, TOGGLE)."""
+        """Control fan, light, bulb, or strip light (state: ON, OFF, TOGGLE)."""
         key = device_name.lower().strip().replace(" ", "_")
         dev = DEVICES.get(key)
         if not dev:
@@ -119,7 +129,8 @@ class IDockController:
             action_state = "OFF"
 
         try:
-            topic = f"cmnd/room_light/{dev['channel']}"
+            device_topic = dev.get("topic", "room_light")
+            topic = f"cmnd/{device_topic}/{dev['channel']}"
             self.client.publish(topic, action_state)
             logger.info(f"Published MQTT: {topic} -> {action_state}")
             return {
@@ -154,9 +165,12 @@ class IDockController:
                 self._send_udp_wol(mac)
                 # 2. MQTT agent wake topic
                 self.client.publish(f"cmnd/{comp_topic}/wake", mac)
-                # 3. ESP32 WoL Relay
-                self.client.publish("cmnd/esp32_wol/wake", mac)
-                # 4. Tasmota WoL (both lowercase and uppercase MAC)
+                # 3. Dedicated ESP32 WoL Relay (Tasmota32 Package Center)
+                self.client.publish(f"cmnd/{comp_topic}/wake", "1")
+                self.client.publish("cmnd/strip_light/WakeOnLan", mac)
+                self.client.publish("cmnd/strip_light/WakeOnLan", mac.upper())
+                self.client.publish("cmnd/strip_light/WakeOnLan", comp_topic)
+                # 4. Tasmota WoL on Room Light
                 self.client.publish("cmnd/room_light/WakeOnLan", mac)
                 self.client.publish("cmnd/room_light/WakeOnLan", mac.upper())
 

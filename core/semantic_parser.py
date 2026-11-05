@@ -46,14 +46,21 @@ class SemanticIntentParser:
         ]
         has_light_word = bool(re.search(r"\b(light|lights|room light|main light|ceiling light|illumination)\b", raw))
         has_bulb_word = bool(re.search(r"\b(bulb|desk light|desk bulb|table lamp|reading light|lamp)\b", raw))
+        has_strip_word = bool(re.search(r"\b(strip|strip light|strip lights|led strip|desk strip|table strip|table strip light|desk strip light)\b", raw))
         has_turn_on = bool(re.search(r"\b(turn on|switch on|power on|enable|activate|start|on)\b", raw))
         has_turn_off = bool(re.search(r"\b(turn off|switch off|power off|disable|deactivate|kill|stop|off|darken|lights out|extinguish)\b", raw))
 
+        # Desk Strip Light ON / OFF
+        if has_strip_word and has_turn_on and not has_turn_off:
+            intents.append({"type": "device", "device": "strip_light", "state": "ON"})
+        elif has_strip_word and has_turn_off:
+            intents.append({"type": "device", "device": "strip_light", "state": "OFF"})
+
         # Room Light ON
-        if any(t in raw for t in light_on_triggers) or (has_light_word and has_turn_on and not has_turn_off and not has_bulb_word):
+        elif any(t in raw for t in light_on_triggers) or (has_light_word and has_turn_on and not has_turn_off and not has_bulb_word and not has_strip_word):
             intents.append({"type": "device", "device": "light", "state": "ON"})
         # Room Light OFF
-        elif has_light_word and has_turn_off and not has_bulb_word:
+        elif has_light_word and has_turn_off and not has_bulb_word and not has_strip_word:
             intents.append({"type": "device", "device": "light", "state": "OFF"})
 
         # Desk Bulb ON / OFF
